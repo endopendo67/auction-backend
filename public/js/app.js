@@ -57,6 +57,8 @@ const el = {
   yourPosition: $('your-position'),
   bidAmount: $('bid-amount'),
   placeBidBtn: $('place-bid-btn'),
+  quickBidIncrement: $('quick-bid-increment'),
+  quickBidOutbid: $('quick-bid-outbid'),
   leaderboardBody: $('leaderboard-body'),
   refreshLeaderboardBtn: $('refresh-leaderboard-btn'),
   leaderboardPagination: $('leaderboard-pagination'),
@@ -141,6 +143,9 @@ const api = {
   
   placeBid: (auctionId, userId, amount) => 
     api.request(`/auctions/${auctionId}/bid`, { method: 'POST', body: { userId, amount } }),
+  
+  quickBid: (auctionId, userId, type) => 
+    api.request(`/auctions/${auctionId}/quick-bid`, { method: 'POST', body: { userId, type } }),
   
   getLeaderboard: (auctionId, limit = 100) => 
     api.request(`/auctions/${auctionId}/leaderboard?limit=${limit}`),
@@ -739,6 +744,37 @@ async function handlePlaceBid() {
   }
 }
 
+// Быстрая ставка (+10% или перебить лидера)
+async function handleQuickBid(type) {
+  if (!state.user || !state.currentAuction) return;
+  
+  const btn = type === 'increment' ? el.quickBidIncrement : el.quickBidOutbid;
+  
+  try {
+    btn.disabled = true;
+    el.quickBidIncrement.disabled = true;
+    el.quickBidOutbid.disabled = true;
+    
+    const result = await api.quickBid(state.currentAuction.id, state.user.id, type);
+    
+    await updateBalance();
+    await loadUserStatus(state.currentAuction.id);
+    await loadLeaderboard(state.currentAuction.id);
+    
+    const amount = result.data.bid.amount;
+    const msg = type === 'increment' 
+      ? t('auction.bid_raised', { amount }) + ' (+10%)'
+      : t('auction.bid_raised', { amount }) + ' (Outbid!)';
+    
+    notify(result.data.roundExtended ? msg + ' ' + t('auction.time_extended') : msg, 'success');
+  } catch (err) {
+    notify(err.message, 'error');
+  } finally {
+    el.quickBidIncrement.disabled = false;
+    el.quickBidOutbid.disabled = false;
+  }
+}
+
 function backToList() {
   if (state.socket && state.currentAuction) {
     state.socket.emit('auction:leave', state.currentAuction.id);
@@ -975,6 +1011,8 @@ async function init() {
   el.cancelCreateBtn?.addEventListener('click', backToList);
   el.backBtn?.addEventListener('click', backToList);
   el.placeBidBtn?.addEventListener('click', handlePlaceBid);
+  el.quickBidIncrement?.addEventListener('click', () => handleQuickBid('increment'));
+  el.quickBidOutbid?.addEventListener('click', () => handleQuickBid('outbid'));
   el.refreshLeaderboardBtn?.addEventListener('click', refreshLeaderboard);
   el.leaderboardPrev?.addEventListener('click', () => changeLeaderboardPage(-1));
   el.leaderboardNext?.addEventListener('click', () => changeLeaderboardPage(1));

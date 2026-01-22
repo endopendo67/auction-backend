@@ -552,6 +552,24 @@ button:disabled {
   white-space: nowrap;
 }
 
+.quick-bids {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.btn-quick {
+  flex: 1;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.btn-quick:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* ==================== */
 /* LEADERBOARD */
 /* ==================== */

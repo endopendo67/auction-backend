@@ -26,6 +26,11 @@ const placeBidSchema = z.object({
   amount: z.number().int().positive(),
 });
 
+const quickBidSchema = z.object({
+  userId: z.string().regex(/^[a-f\d]{24}$/i),
+  type: z.enum(['increment', 'outbid']), // increment = +10%, outbid = перебить лидера
+});
+
 export const auctionController = {
   // Создание нового аукциона
   create: asyncHandler(async (req: Request, res: Response) => {
@@ -213,6 +218,57 @@ export const auctionController = {
         username: (bid.userId as any).username,
         round: bid.round,
       })),
+    });
+  }),
+
+  // Быстрая ставка (+10% или перебить лидера)
+  quickBid: asyncHandler(async (req: Request, res: Response) => {
+    const auctionId = new Types.ObjectId(req.params.id);
+    const { userId, type } = quickBidSchema.parse(req.body);
+    const userObjectId = new Types.ObjectId(userId);
+    
+    // Получаем текущую ситуацию
+    const [leaderboard, userBid, auction] = await Promise.all([
+      bidService.getLeaderboard(auctionId, 1),
+      bidService.getUserBid(auctionId, userObjectId),
+      auctionService.getAuction(auctionId),
+    ]);
+    
+    if (!auction) {
+      throw createError('Аукцион не найден', 404, 'AUCTION_NOT_FOUND');
+    }
+    
+    const topBid = leaderboard[0]?.amount || auction.startingPrice;
+    const currentBid = userBid?.amount || 0;
+    const minIncrement = auction.minBidIncrement || 1;
+    
+    let newAmount: number;
+    
+    if (type === 'increment') {
+      // +10% от текущей ставки пользователя (или от стартовой)
+      const base = currentBid || auction.startingPrice;
+      newAmount = Math.ceil(base * 1.1);
+    } else {
+      // Перебить лидера на минимальный шаг
+      newAmount = topBid + minIncrement;
+    }
+    
+    // Минимум — текущая ставка + 1
+    if (newAmount <= currentBid) {
+      newAmount = currentBid + minIncrement;
+    }
+    
+    const result = await bidService.placeBid(auctionId, userObjectId, newAmount);
+    
+    res.status(result.isNewBid ? 201 : 200).json({
+      success: true,
+      data: {
+        bid: result.bid.toJSON(),
+        isNewBid: result.isNewBid,
+        previousAmount: result.previousAmount,
+        roundExtended: result.roundExtended,
+        quickBidType: type,
+      },
     });
   }),
 };

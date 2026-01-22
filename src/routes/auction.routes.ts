@@ -24,6 +24,9 @@ router.post('/:id/start', auctionController.start);
 // Place bid
 router.post('/:id/bid', auctionController.placeBid);
 
+// Quick bid (+10% or outbid leader)
+router.post('/:id/quick-bid', auctionController.quickBid);
+
 // Get leaderboard
 router.get('/:id/leaderboard', auctionController.getLeaderboard);
 

@@ -4,13 +4,16 @@ import { connectDatabase } from './db/connection';
 import { config } from './config';
 import { logger } from './utils/logger';
 import { socketHandler } from './websocket/socket-handler';
-import { roundManagerService, redisService } from './services';
+import { roundManagerService, redisService, recoveryService } from './services';
 
 async function bootstrap(): Promise<void> {
   try {
     // Подключение к базам данных
     await connectDatabase();
     await redisService.connect(); // Redis (опционально, работает и без него)
+    
+    // Восстановление состояния после рестарта
+    await recoveryService.recover();
 
     // Create Express app
     const app = createApp();
