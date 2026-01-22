@@ -124,13 +124,22 @@ export class AuctionService {
   /**
    * Продление времени раунда (anti-sniping).
    * Если ставка сделана в последние N секунд - добавляем время.
+   * Максимум 3 продления за раунд чтобы не было бесконечных торгов.
    */
   async extendRoundTime(auctionId: Types.ObjectId): Promise<boolean> {
+    const MAX_EXTENSIONS = 3;
+    
     const auction = await Auction.findById(auctionId);
     if (!auction || auction.status !== AuctionStatus.ACTIVE) return false;
 
     const currentRound = auction.rounds[auction.currentRound];
     if (!currentRound || currentRound.status !== 'active') return false;
+
+    // Лимит продлений достигнут
+    if (currentRound.extensionCount >= MAX_EXTENSIONS) {
+      logger.debug(`Anti-snipe: лимит продлений (${MAX_EXTENSIONS}) достигнут, auction=${auctionId}`);
+      return false;
+    }
 
     const now = Date.now();
     const timeToEnd = currentRound.endTime.getTime() - now;
@@ -147,7 +156,8 @@ export class AuctionService {
         }
       );
 
-      logger.info(`Anti-snipe: раунд продлён до ${newEndTime.toISOString()}, auction=${auctionId}`);
+      const remaining = MAX_EXTENSIONS - currentRound.extensionCount - 1;
+      logger.info(`Anti-snipe: продлено до ${newEndTime.toISOString()}, осталось ${remaining} продлений`);
       return true;
     }
 

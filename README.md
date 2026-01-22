@@ -25,7 +25,7 @@ Docker-compose поднимает MongoDB с replica set (нужен для тр
 # Тестовые данные
 docker-compose exec app npm run seed
 
-# Боты (8 штук с разными стратегиями)
+# Боты (50 штук с реалистичным поведением)
 docker-compose exec app tsx scripts/bots.ts
 
 # Нагрузочный тест (100 ботов)
