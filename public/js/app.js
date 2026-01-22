@@ -775,7 +775,8 @@ function initSocket() {
   state.socket.on('auction:leaderboard', (data) => {
     if (state.currentAuction && data.auctionId === state.currentAuction.id) {
       renderLeaderboard(data.leaderboard.map(b => ({
-        userId: { username: b.username },
+        position: b.position,
+        username: b.username,
         amount: b.amount,
         status: b.status,
       })));
