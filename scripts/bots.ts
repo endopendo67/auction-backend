@@ -102,11 +102,23 @@ class BotManager {
     this.auctionId = auction._id as Types.ObjectId;
     logger.info(`Создан демо-аукцион: ${this.auctionId}`);
 
-    // Автозапуск через 3.5 секунды
+    // Автозапуск через 3.5 секунды (если ещё не запущен)
     setTimeout(async () => {
       try {
-        await auctionService.startAuction(this.auctionId!);
-        logger.info('Аукцион запущен');
+        const auction = await Auction.findById(this.auctionId);
+        if (!auction) {
+          logger.error('Аукцион не найден');
+          return;
+        }
+
+        if (auction.status === AuctionStatus.PENDING) {
+          await auctionService.startAuction(this.auctionId!);
+          logger.info('Аукцион запущен');
+        } else if (auction.status === AuctionStatus.ACTIVE) {
+          logger.info('Аукцион уже активен, продолжаем');
+        } else {
+          logger.warn(`Аукцион в статусе ${auction.status}, запуск невозможен`);
+        }
       } catch (err) {
         logger.error('Ошибка запуска аукциона:', err);
       }
