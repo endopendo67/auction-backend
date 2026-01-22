@@ -12,9 +12,7 @@ COPY . .
 # Собираем TypeScript
 RUN npm run build
 
-# Удаляем devDependencies после сборки
-RUN npm prune --production
-
 EXPOSE 3000
 
+# tsx остаётся для запуска скриптов (bots, load-test, seed)
 CMD ["npm", "start"]
