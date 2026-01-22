@@ -59,6 +59,10 @@ const el = {
   placeBidBtn: $('place-bid-btn'),
   leaderboardBody: $('leaderboard-body'),
   refreshLeaderboardBtn: $('refresh-leaderboard-btn'),
+  leaderboardPagination: $('leaderboard-pagination'),
+  leaderboardPrev: $('leaderboard-prev'),
+  leaderboardNext: $('leaderboard-next'),
+  leaderboardPage: $('leaderboard-page'),
   
   // Создание
   cancelCreateBtn: $('cancel-create-btn'),
@@ -373,6 +377,12 @@ function hideHistory() {
 let auctionsPage = 1;
 let auctionsTotalPages = 1;
 
+// Пагинация лидерборда
+let leaderboardPage = 1;
+let leaderboardTotalPages = 1;
+let leaderboardData = []; // Все данные лидерборда
+const LEADERBOARD_PER_PAGE = 50;
+
 async function loadAuctions(page = 1) {
   try {
     const result = await api.getAuctions(page, 20);
@@ -520,22 +530,44 @@ async function loadAuctionDetail(auctionId) {
   await loadUserStatus(auctionId);
 }
 
-async function loadLeaderboard(auctionId) {
+async function loadLeaderboard(auctionId, resetPage = true) {
   try {
     // Для завершённых аукционов показываем победителей
     if (state.currentAuction?.status === 'completed') {
       const result = await api.getWinners(auctionId);
       renderWinners(result.data);
+      el.leaderboardPagination?.classList.add('hidden');
     } else {
-      const result = await api.getLeaderboard(auctionId, 50);
-      renderLeaderboard(result.data);
+      // Загружаем больше данных для пагинации (до 500)
+      const result = await api.getLeaderboard(auctionId, 500);
+      leaderboardData = result.data || [];
+      leaderboardTotalPages = Math.ceil(leaderboardData.length / LEADERBOARD_PER_PAGE);
+      if (resetPage) leaderboardPage = 1;
+      renderLeaderboardPage();
     }
   } catch (err) {
     el.leaderboardBody.innerHTML = `<tr><td colspan="3">${t('common.error')}</td></tr>`;
+    el.leaderboardPagination?.classList.add('hidden');
   }
 }
 
-function renderLeaderboard(bids) {
+function renderLeaderboardPage() {
+  if (!leaderboardData.length) {
+    el.leaderboardBody.innerHTML = `<tr><td colspan="3">${t('leaderboard.no_bids')}</td></tr>`;
+    el.leaderboardPagination?.classList.add('hidden');
+    return;
+  }
+
+  // Вычисляем срез для текущей страницы
+  const start = (leaderboardPage - 1) * LEADERBOARD_PER_PAGE;
+  const end = start + LEADERBOARD_PER_PAGE;
+  const pageBids = leaderboardData.slice(start, end);
+
+  renderLeaderboard(pageBids, start);
+  updateLeaderboardPagination();
+}
+
+function renderLeaderboard(bids, startIndex = 0) {
   if (!bids || !bids.length) {
     el.leaderboardBody.innerHTML = `<tr><td colspan="3">${t('leaderboard.no_bids')}</td></tr>`;
     return;
@@ -545,18 +577,41 @@ function renderLeaderboard(bids) {
   const itemsInRound = round?.itemsToDistribute || 0;
 
   el.leaderboardBody.innerHTML = bids.map((bid, i) => {
-    const isWinning = i < itemsInRound;
+    const globalIndex = startIndex + i;
+    const isWinning = globalIndex < itemsInRound;
     const isYou = state.user && bid.username === state.user.username;
     const classes = [isWinning ? 'winning' : '', isYou ? 'you' : ''].filter(Boolean).join(' ');
     
     return `
       <tr class="${classes}">
-        <td>${bid.position}</td>
+        <td>${bid.position || globalIndex + 1}</td>
         <td>${escapeHtml(bid.username)}${isYou ? ' ' + t('leaderboard.you') : ''}</td>
         <td>${bid.amount} ⭐</td>
       </tr>
     `;
   }).join('');
+}
+
+function updateLeaderboardPagination() {
+  if (leaderboardTotalPages <= 1) {
+    el.leaderboardPagination?.classList.add('hidden');
+    return;
+  }
+  
+  el.leaderboardPagination?.classList.remove('hidden');
+  if (el.leaderboardPage) {
+    el.leaderboardPage.textContent = `${leaderboardPage} / ${leaderboardTotalPages}`;
+  }
+  if (el.leaderboardPrev) el.leaderboardPrev.disabled = leaderboardPage <= 1;
+  if (el.leaderboardNext) el.leaderboardNext.disabled = leaderboardPage >= leaderboardTotalPages;
+}
+
+function changeLeaderboardPage(delta) {
+  const newPage = leaderboardPage + delta;
+  if (newPage >= 1 && newPage <= leaderboardTotalPages) {
+    leaderboardPage = newPage;
+    renderLeaderboardPage();
+  }
 }
 
 function renderWinners(winners) {
@@ -647,7 +702,7 @@ async function refreshLeaderboard() {
   el.refreshLeaderboardBtn.textContent = '⏳';
   
   try {
-    await loadLeaderboard(state.currentAuction.id);
+    await loadLeaderboard(state.currentAuction.id, false); // не сбрасывать страницу
     await loadUserStatus(state.currentAuction.id);
   } finally {
     el.refreshLeaderboardBtn.disabled = false;
@@ -817,12 +872,15 @@ function initSocket() {
   // Push-обновление лидерборда (throttled на сервере)
   state.socket.on('auction:leaderboard', (data) => {
     if (state.currentAuction && data.auctionId === state.currentAuction.id) {
-      renderLeaderboard(data.leaderboard.map(b => ({
+      // Обновляем данные лидерборда и перерисовываем текущую страницу
+      leaderboardData = data.leaderboard.map(b => ({
         position: b.position,
         username: b.username,
         amount: b.amount,
         status: b.status,
-      })));
+      }));
+      leaderboardTotalPages = Math.ceil(leaderboardData.length / LEADERBOARD_PER_PAGE);
+      renderLeaderboardPage();
       // Обновляем статус пользователя
       loadUserStatus(data.auctionId);
     }
@@ -918,6 +976,8 @@ async function init() {
   el.backBtn?.addEventListener('click', backToList);
   el.placeBidBtn?.addEventListener('click', handlePlaceBid);
   el.refreshLeaderboardBtn?.addEventListener('click', refreshLeaderboard);
+  el.leaderboardPrev?.addEventListener('click', () => changeLeaderboardPage(-1));
+  el.leaderboardNext?.addEventListener('click', () => changeLeaderboardPage(1));
   el.addRoundBtn?.addEventListener('click', addRoundRow);
   el.createAuctionForm?.addEventListener('submit', handleCreateAuction);
   el.langSelect?.addEventListener('change', handleLanguageChange);
