@@ -115,45 +115,66 @@ class RoundManagerService extends EventEmitter {
     // Очищаем флаг предупреждения для этого раунда
     this.warningSentFor.delete(`${auctionId}_${roundNumber}`);
 
-    try {
-      const result = await bidService.processRoundWinners(
-        auctionId as unknown as import('mongoose').Types.ObjectId
-      );
+    // Retry при WriteConflict (код 112)
+    const MAX_RETRIES = 5;
+    let lastError: Error | null = null;
 
-      this.emit('round_event', {
-        auctionId,
-        roundNumber,
-        type: 'round_ended',
-        data: {
-          winnersCount: result.winners.length,
-          carriedOver: result.carriedOver,
-          refunded: result.refunded,
-        },
-      } as RoundEvent);
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      try {
+        const result = await bidService.processRoundWinners(
+          auctionId as unknown as import('mongoose').Types.ObjectId
+        );
 
-      const updated = await auctionService.advanceToNextRound(
-        auctionId as unknown as import('mongoose').Types.ObjectId
-      );
-
-      if (!updated) return;
-
-      if (updated.status === AuctionStatus.COMPLETED) {
         this.emit('round_event', {
           auctionId,
-          roundNumber: updated.rounds.length - 1,
-          type: 'auction_completed',
-          data: { totalDistributed: updated.distributedItems },
+          roundNumber,
+          type: 'round_ended',
+          data: {
+            winnersCount: result.winners.length,
+            carriedOver: result.carriedOver,
+            refunded: result.refunded,
+          },
         } as RoundEvent);
-      } else {
-        this.emit('round_event', {
-          auctionId,
-          roundNumber: updated.currentRound,
-          type: 'round_started',
-        } as RoundEvent);
+
+        const updated = await auctionService.advanceToNextRound(
+          auctionId as unknown as import('mongoose').Types.ObjectId
+        );
+
+        if (!updated) return;
+
+        if (updated.status === AuctionStatus.COMPLETED) {
+          this.emit('round_event', {
+            auctionId,
+            roundNumber: updated.rounds.length - 1,
+            type: 'auction_completed',
+            data: { totalDistributed: updated.distributedItems },
+          } as RoundEvent);
+        } else {
+          this.emit('round_event', {
+            auctionId,
+            roundNumber: updated.currentRound,
+            type: 'round_started',
+          } as RoundEvent);
+        }
+        
+        return; // Успех — выходим
+      } catch (err: any) {
+        lastError = err;
+        
+        // WriteConflict — ждём и повторяем
+        if (err.code === 112 || err.message?.includes('WriteConflict')) {
+          const delay = Math.pow(2, attempt) * 100 + Math.random() * 100;
+          logger.warn(`WriteConflict при завершении раунда, повтор ${attempt + 1}/${MAX_RETRIES}`);
+          await new Promise(r => setTimeout(r, delay));
+          continue;
+        }
+        
+        // Другая ошибка — не повторяем
+        break;
       }
-    } catch (err) {
-      logger.error(`Ошибка при завершении раунда аукциона ${auctionId}`, { error: err });
     }
+
+    logger.error(`Ошибка при завершении раунда аукциона ${auctionId}`, { error: lastError });
   }
 
   // Для тестирования
