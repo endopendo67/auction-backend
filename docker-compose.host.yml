@@ -1,16 +1,21 @@
+# Используйте этот файл если стандартный docker-compose.yml не работает
+# Запуск: docker-compose -f docker-compose.host.yml up -d
+#
+# Этот файл использует host network mode, который обходит проблемы
+# с Docker bridge networking на некоторых системах (Arch, Manjaro и др.)
+
 services:
   app:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: auction-app
-    ports:
-      - "${APP_PORT:-3000}:3000"
+    network_mode: host
     environment:
       - NODE_ENV=${NODE_ENV:-production}
       - PORT=3000
-      - MONGODB_URI=mongodb://mongo:27017/auction_db?replicaSet=rs0
-      - REDIS_URI=redis://redis:6379
+      - MONGODB_URI=mongodb://127.0.0.1:27017/auction_db?directConnection=true
+      - REDIS_URI=redis://127.0.0.1:6379
       - DEFAULT_ROUND_DURATION_MS=${DEFAULT_ROUND_DURATION_MS:-300000}
       - ANTI_SNIPE_THRESHOLD_MS=${ANTI_SNIPE_THRESHOLD_MS:-30000}
       - ANTI_SNIPE_EXTENSION_MS=${ANTI_SNIPE_EXTENSION_MS:-60000}
@@ -24,40 +29,28 @@ services:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
     restart: unless-stopped
-    networks:
-      - auction-network
 
   mongo:
     image: mongo:7
     container_name: auction-mongo
-    ports:
-      - "${MONGO_PORT:-27017}:27017"
+    network_mode: host
     volumes:
       - mongo_data:/data/db
       - mongo_config:/data/configdb
-    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all", "--port", "27017"]
     healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      test: ["CMD", "mongosh", "--port", "27017", "--eval", "db.adminCommand('ping')"]
       interval: 10s
       timeout: 10s
       retries: 10
       start_period: 30s
     restart: unless-stopped
-    networks:
-      - auction-network
 
   redis:
     image: redis:7-alpine
     container_name: auction-redis
-    ports:
-      - "${REDIS_PORT:-6379}:6379"
+    network_mode: host
     volumes:
       - redis_data:/data
     command: >
@@ -67,24 +60,24 @@ services:
       --maxmemory-policy allkeys-lru
       --tcp-keepalive 60
       --timeout 0
+      --port 6379
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-p", "6379", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 10s
     restart: unless-stopped
-    networks:
-      - auction-network
 
   mongo-init:
     image: mongo:7
     container_name: auction-mongo-init
+    network_mode: host
     depends_on:
       mongo:
         condition: service_healthy
     command: >
-      mongosh --host mongo:27017 --eval "
+      mongosh --host 127.0.0.1:27017 --eval "
         try {
           const status = rs.status();
           print('Replica set already initialized:', status.set);
@@ -92,19 +85,12 @@ services:
           print('Initializing replica set...');
           rs.initiate({
             _id: 'rs0',
-            members: [{_id: 0, host: 'mongo:27017'}]
+            members: [{_id: 0, host: '127.0.0.1:27017'}]
           });
           print('Replica set initialized');
         }
       "
     restart: "no"
-    networks:
-      - auction-network
-
-networks:
-  auction-network:
-    driver: bridge
-    name: auction-network
 
 volumes:
   mongo_data:
@@ -113,3 +99,4 @@ volumes:
     name: auction-mongo-config
   redis_data:
     name: auction-redis-data
+

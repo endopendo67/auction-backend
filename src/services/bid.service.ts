@@ -450,6 +450,29 @@ export class BidService {
       .populate('userId', 'username')
       .lean();
   }
+
+  /**
+   * История ставок пользователя с пагинацией
+   */
+  async getUserBidHistory(
+    userId: Types.ObjectId,
+    page: number = 1,
+    limit: number = 20
+  ): Promise<{ bids: any[]; total: number }> {
+    const skip = (page - 1) * limit;
+
+    const [bids, total] = await Promise.all([
+      Bid.find({ userId })
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate('auctionId', 'title status')
+        .lean(),
+      Bid.countDocuments({ userId }),
+    ]);
+
+    return { bids, total };
+  }
 }
 
 export const bidService = new BidService();
