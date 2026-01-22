@@ -1,105 +1,118 @@
-# Auction Backend
+# 🎁 Telegram Gift Auctions Clone
 
-> Проект для конкурса [CryptoBot Backend Challenge](https://t.me/CryptoBotRU)
+> Проект для конкурса [CryptoBot Backend Challenge]
 
-Бэкенд аукционной системы по типу Telegram Gift Auctions.
+Воспроизведение механики аукционов Telegram на лимитированные цифровые подарки.
 
-🌐 **Live-демо:** [auction-demo.lol](https://auction-demo.lol)
+**🌐 Демо:** [auction-demo.lol](https://auction-demo.lol) &nbsp;|&nbsp; **🎬 Видео:** [Streamable](https://streamable.com/cl5w2s)
 
-🎬 **Видео-демо:** [Смотреть на Streamable](https://streamable.com/cl5w2s)
+---
 
-## Быстрый старт (Docker)
+## Что внутри
+
+Это не классический аукцион с одним дедлайном. Тут **многораундовая система**:
+
+- Аукцион разбит на несколько раундов
+- В каждом раунде часть участников получает товар
+- Остальные автоматически переходят в следующий раунд
+- Есть защита от снайперских ставок в последнюю секунду
+
+---
+
+## Быстрый старт
+
+### Docker (рекомендуется)
 
 ```bash
-# Клонируем и запускаем
-git clone <repo>
+git clone https://github.com/endopendo67/auction-backend.git
 cd auction-backend
 docker-compose up -d
-
-# Открываем http://localhost:3000
 ```
 
-Docker-compose поднимает MongoDB с replica set (для транзакций), Redis (для кэширования) и приложение. Всё настроено автоматически.
+Готово. Открывай http://localhost:3000
 
-### Запуск скриптов в Docker
+Docker поднимет MongoDB (с replica set для транзакций), Redis и само приложение.
 
-```bash
-# Тестовые данные
-docker-compose exec app npm run seed
-
-# Боты (50 штук с реалистичным поведением)
-docker-compose exec app tsx scripts/bots.ts
-
-# Нагрузочный тест (100 ботов)
-docker-compose exec app tsx scripts/load-test.ts --bots=100
-
-# Нагрузочный тест (1000 ботов)
-docker-compose exec app tsx scripts/load-test.ts --bots=1000 --duration=120000
-```
-
-## Локальный запуск (без Docker)
-
-### 1. MongoDB с replica set
-
-MongoDB должен работать с replica set для поддержки транзакций:
+### Без Docker
 
 ```bash
-# macOS
-brew tap mongodb/brew
-brew install mongodb-community
+# MongoDB с replica set (для транзакций)
 brew services start mongodb-community
-
-# Инициализация replica set
 mongosh --eval "rs.initiate()"
-```
 
-### 2. Приложение
+# Опционально: Redis
+brew services start redis
 
-```bash
+# Приложение
 npm install
 cp env.example .env
 npm run dev
 ```
 
-Откроется на http://localhost:3000
+---
 
-### 3. Тестовые данные (опционально)
+## Технологии
 
-```bash
-npm run seed
+| Что | Зачем |
+|-----|-------|
+| **Node.js + TypeScript** | Основной стек по условиям конкурса |
+| **MongoDB** | Хранение данных + транзакции (snapshot isolation) |
+| **Redis** | Кэширование лидерборда, rate limiting |
+| **Socket.IO** | Real-time обновления ставок |
+| **Zod** | Валидация входных данных |
+
+---
+
+## Механика аукциона
+
+### Многораундовая система
+
+```
+Раунд 1: 100 товаров → топ-100 ставок выигрывают
+         остальные переносятся в раунд 2
+
+Раунд 2: 50 товаров → топ-50 выигрывают
+         остальные → раунд 3
+
+Раунд 3: 50 товаров → топ-50 выигрывают
+         остальные → возврат средств
 ```
 
-Создаст админа, тестовых юзеров и пару аукционов для демонстрации.
+### Ранжирование ставок
 
-## Как работает аукцион
+1. По сумме (больше = выше)
+2. При равных суммах — кто раньше поставил
 
-1. **Многораундовая система** — аукцион разбит на раунды. В каждом раунде топ-N ставок получают товар.
+### Anti-Sniping
 
-2. **Ранжирование** — по сумме ставки, при равных суммах — кто раньше поставил.
+Ставка в последние **30 секунд** продлевает раунд на **60 секунд**.
 
-3. **Перенос ставок** — кто не выиграл, переходит в следующий раунд с той же ставкой.
+Это не даёт выиграть просто поставив в последнюю миллисекунду.
 
-4. **Anti-sniping** — ставка в последние 30 секунд продлевает раунд на 60 секунд.
+---
 
-5. **Работа с деньгами**:
-   - Ставка → средства блокируются
-   - Повышение → блокируется разница
-   - Выигрыш → списание
-   - Проигрыш в последнем раунде → возврат
+## Финансовая корректность
 
-## Конкурентность и финансы
+Это главное. Деньги не должны теряться и не должны дублироваться.
 
-- Все операции с деньгами через **транзакции MongoDB** (snapshot isolation)
-- **Атомарные проверки** баланса через `$expr` + `$inc`
-- **Retry с backoff** при WriteConflict
-- **Аудит** — каждая операция логируется в Transaction
-- **Redis-кэш** — лидерборд и минимальная ставка кэшируются (TTL 1-2 сек)
+### Как работает
+
+```
+Ставка 1000 ⭐   →  Блокируем 1000 (balance не меняется, lockedBalance += 1000)
+Повышаем до 1500 →  Блокируем ещё 500 (только разницу)
+Выигрыш          →  Списываем 1500 (balance -= 1500, lockedBalance -= 1500)
+Проигрыш         →  Возвращаем (lockedBalance -= 1500, balance не меняется)
+```
+
+### Защиты
+
+**Атомарные операции** — никакой race condition не сломает баланс:
 
 ```typescript
-// Пример атомарной блокировки средств
 await User.updateOne(
   {
     _id: userId,
+    // Проверка И обновление в одной операции
     $expr: { $gte: [{ $subtract: ['$balance', '$lockedBalance'] }, amount] }
   },
   { $inc: { lockedBalance: amount } },
@@ -107,106 +120,156 @@ await User.updateOne(
 );
 ```
 
-## API
+**Транзакции MongoDB** — snapshot isolation, все операции или выполняются, или откатываются.
 
-### Авторизация
-```
-POST /api/auth/login     — { username } → ставит куку
-POST /api/auth/logout    — выход
-GET  /api/auth/me        — текущий пользователь
-```
+**Retry с backoff** — при конфликте записи повторяем до 5 раз с экспоненциальной задержкой.
 
-### Аукционы
-```
-GET  /api/auctions              — список
-POST /api/auctions              — создать
-GET  /api/auctions/:id          — детали
-POST /api/auctions/:id/start    — запустить
-POST /api/auctions/:id/bid      — ставка { userId, amount }
-GET  /api/auctions/:id/leaderboard
-```
+**Аудит** — каждая операция с деньгами логируется в коллекцию `Transaction`.
 
-### Баланс
-```
-GET  /api/users/:id/balance
-POST /api/users/:id/deposit     — { amount }
-```
+---
+
+## Edge Cases
+
+Обработаны пограничные случаи:
+
+| Случай | Решение |
+|--------|---------|
+| Ставка на границе времени | Буфер 100мс до конца раунда |
+| Спам ставками | Rate limit: 10 ставок / 5 сек (Redis) |
+| Нет участников в раунде | Раунд завершается без победителей |
+| Участников меньше чем товаров | Все выигрывают |
+| Равные ставки | Выигрывает кто раньше поставил |
+| Слишком большая сумма | Лимит 1 млрд |
+| Переполнение баланса | Лимит 10 млрд |
+
+---
+
+## Оптимизации
+
+### База данных
+
+- **Составной индекс** для лидерборда: `{ auctionId, status, amount, createdAt }`
+- **Lean queries** где не нужны методы документа
+- **Projection** — запрашиваем только нужные поля
+
+### Кэширование (Redis)
+
+- Лидерборд — TTL 2 сек
+- Минимальная выигрышная ставка — TTL 1 сек
+- Инвалидация после каждой ставки
 
 ### WebSocket
-```javascript
-socket.emit('auction:join', auctionId);
-socket.on('auction:new_bid', (data) => { });
-socket.on('auction:time_extended', (data) => { });
-socket.on('auction:event', (event) => { });
-```
+
+- Throttling лидерборда — не чаще 200мс
+- Отдельные комнаты для каждого аукциона
+- Lobby для списка аукционов
+
+---
 
 ## Тестирование
 
-### Боты
-
 ```bash
+# Тестовые данные
+npm run seed
+
+# 50 ботов с разными стратегиями (киты, снайперы, осторожные)
 npx tsx scripts/bots.ts
-```
 
-Запускает 50 ботов с разными стратегиями — киты, агрессивные, снайперы, осторожные.
-
-### Нагрузочный тест
-
-```bash
-# 100 ботов
+# Нагрузочный тест
 npx tsx scripts/load-test.ts --bots=100
-
-# 1000 ботов на 2 минуты
 npx tsx scripts/load-test.ts --bots=1000 --duration=120000
-```
 
-### Экстремальный стресс-тест
-
-```bash
-# 5000 ботов, 200 RPS
+# Стресс-тест (5000+ ботов)
 npm run test:stress
-
-# Кастомные параметры
-npx tsx scripts/stress-test.ts --bots=10000 --rps=500 --duration=180
+npx tsx scripts/stress-test.ts --bots=10000 --rps=500
 ```
 
-Результат показывает:
+Тесты проверяют:
 - RPS и latency (Avg, P50, P95, P99)
 - Пиковую конкурентность
-- **Проверку целостности балансов** — что деньги сходятся
+- **Целостность балансов** — что деньги сходятся после всех операций
 
-## Структура
+---
+
+## API
+
+### REST
+
+```
+POST /api/auth/login          { username }
+GET  /api/auth/me
+POST /api/auth/logout
+
+GET  /api/auctions
+POST /api/auctions            { title, totalItems, startingPrice, roundsConfig, ... }
+GET  /api/auctions/:id
+POST /api/auctions/:id/start
+POST /api/auctions/:id/bid    { userId, amount }
+GET  /api/auctions/:id/leaderboard
+GET  /api/auctions/:id/winners
+
+GET  /api/users/:id/balance
+POST /api/users/:id/deposit   { amount }
+```
+
+### WebSocket
+
+```javascript
+socket.emit('auction:join', auctionId);
+socket.emit('lobby:join');
+
+socket.on('auction:new_bid', (data) => { /* обновить UI */ });
+socket.on('auction:time_extended', (data) => { /* anti-snipe сработал */ });
+socket.on('auction:leaderboard', (data) => { /* push лидерборда */ });
+socket.on('lobby:new_auction', (data) => { /* новый аукцион */ });
+```
+
+---
+
+## Структура проекта
 
 ```
 src/
-├── controllers/    — HTTP хендлеры
-├── services/       — бизнес-логика
-│   ├── balance.service.ts   — работа с деньгами
-│   ├── bid.service.ts       — ставки с retry
-│   ├── auction.service.ts   — управление аукционами
-│   ├── redis.service.ts     — кэширование
-│   └── round-manager.service.ts — логика раундов
-├── models/         — User, Auction, Bid, Transaction
-├── websocket/      — real-time обновления
-└── ...
+├── services/
+│   ├── bid.service.ts       # Ставки, retry, rate limiting
+│   ├── balance.service.ts   # Финансы, транзакции
+│   ├── auction.service.ts   # Создание, запуск, anti-snipe
+│   ├── redis.service.ts     # Кэш, rate limit
+│   └── round-manager.service.ts  # Автоматическое завершение раундов
+├── models/                  # User, Auction, Bid, Transaction
+├── controllers/             # HTTP handlers
+├── websocket/               # Socket.IO
+└── middleware/              # Auth, error handling
 
 scripts/
-├── seed.ts         — тестовые данные
-├── bots.ts         — симуляция пользователей (50 ботов)
-├── load-test.ts    — нагрузка до 1000 ботов
-└── stress-test.ts  — экстремальный тест (5000+ ботов)
+├── seed.ts          # Тестовые данные
+├── bots.ts          # Симуляция 50 пользователей
+├── load-test.ts     # До 1000 ботов
+└── stress-test.ts   # 5000+ ботов, проверка под нагрузкой
 ```
+
+---
 
 ## Конфиг
 
 | Переменная | Описание | Default |
 |------------|----------|---------|
-| PORT | Порт | 3000 |
-| MONGODB_URI | MongoDB URI | mongodb://localhost:27017/auction_db |
-| REDIS_URI | Redis URI (опционально) | redis://localhost:6379 |
-| ANTI_SNIPE_THRESHOLD_MS | Порог anti-snipe | 30000 |
-| ANTI_SNIPE_EXTENSION_MS | Продление | 60000 |
+| `PORT` | Порт сервера | 3000 |
+| `MONGODB_URI` | MongoDB connection string | mongodb://localhost:27017/auction_db |
+| `REDIS_URI` | Redis (опционально) | redis://localhost:6379 |
+| `ANTI_SNIPE_THRESHOLD_MS` | Порог для anti-snipe | 30000 |
+| `ANTI_SNIPE_EXTENSION_MS` | На сколько продлевать | 60000 |
+| `MIN_BID_INCREMENT` | Минимальный шаг ставки | 10 |
 
-## Языки
+---
 
-RU / EN — переключатель в хедере, сохраняется в localStorage.
+## Что можно улучшить
+
+- [ ] Горизонтальное масштабирование (Redis pub/sub для синхронизации WS между инстансами)
+- [ ] Очереди для тяжёлых операций (Bull/BullMQ)
+- [ ] Метрики (Prometheus + Grafana)
+- [ ] E2E тесты
+
+---
+
+Сделано для [CryptoBot Backend Challenge](https://t.me/CryptoBotRU) 🚀
