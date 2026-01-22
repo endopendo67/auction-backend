@@ -490,7 +490,6 @@ async function loadAuctionDetail(auctionId) {
   el.auctionStatus.className = `status-badge ${a.status}`;
   el.auctionRound.textContent = `${a.currentRound + 1} / ${a.rounds.length}`;
   
-  const round = a.rounds[a.currentRound];
   if (round) {
     el.auctionRoundItems.textContent = round.itemsToDistribute;
     el.auctionExtensions.textContent = round.extensionCount || 0;
