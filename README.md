@@ -19,7 +19,7 @@ docker-compose up -d
 # Открываем http://localhost:3000
 ```
 
-Docker-compose поднимает MongoDB с replica set (нужен для транзакций) и приложение. Всё настроено автоматически.
+Docker-compose поднимает MongoDB с replica set (для транзакций), Redis (для кэширования) и приложение. Всё настроено автоматически.
 
 ### Запуск скриптов в Docker
 
@@ -93,6 +93,7 @@ npm run seed
 - **Атомарные проверки** баланса через `$expr` + `$inc`
 - **Retry с backoff** при WriteConflict
 - **Аудит** — каждая операция логируется в Transaction
+- **Redis-кэш** — лидерборд и минимальная ставка кэшируются (TTL 1-2 сек)
 
 ```typescript
 // Пример атомарной блокировки средств
@@ -147,7 +148,7 @@ socket.on('auction:event', (event) => { });
 npx tsx scripts/bots.ts
 ```
 
-Запускает 8 ботов с разными стратегиями — агрессивные, терпеливые, снайперы.
+Запускает 50 ботов с разными стратегиями — киты, агрессивные, снайперы, осторожные.
 
 ### Нагрузочный тест
 
@@ -159,8 +160,18 @@ npx tsx scripts/load-test.ts --bots=100
 npx tsx scripts/load-test.ts --bots=1000 --duration=120000
 ```
 
+### Экстремальный стресс-тест
+
+```bash
+# 5000 ботов, 200 RPS
+npm run test:stress
+
+# Кастомные параметры
+npx tsx scripts/stress-test.ts --bots=10000 --rps=500 --duration=180
+```
+
 Результат показывает:
-- RPS и время ответа
+- RPS и latency (Avg, P50, P95, P99)
 - Пиковую конкурентность
 - **Проверку целостности балансов** — что деньги сходятся
 
@@ -173,6 +184,7 @@ src/
 │   ├── balance.service.ts   — работа с деньгами
 │   ├── bid.service.ts       — ставки с retry
 │   ├── auction.service.ts   — управление аукционами
+│   ├── redis.service.ts     — кэширование
 │   └── round-manager.service.ts — логика раундов
 ├── models/         — User, Auction, Bid, Transaction
 ├── websocket/      — real-time обновления
@@ -180,8 +192,9 @@ src/
 
 scripts/
 ├── seed.ts         — тестовые данные
-├── bots.ts         — симуляция пользователей
-└── load-test.ts    — нагрузка до 1000 ботов
+├── bots.ts         — симуляция пользователей (50 ботов)
+├── load-test.ts    — нагрузка до 1000 ботов
+└── stress-test.ts  — экстремальный тест (5000+ ботов)
 ```
 
 ## Конфиг
@@ -190,6 +203,7 @@ scripts/
 |------------|----------|---------|
 | PORT | Порт | 3000 |
 | MONGODB_URI | MongoDB URI | mongodb://localhost:27017/auction_db |
+| REDIS_URI | Redis URI (опционально) | redis://localhost:6379 |
 | ANTI_SNIPE_THRESHOLD_MS | Порог anti-snipe | 30000 |
 | ANTI_SNIPE_EXTENSION_MS | Продление | 60000 |
 

@@ -9,14 +9,17 @@ services:
       - NODE_ENV=production
       - PORT=3000
       - MONGODB_URI=mongodb://mongo:27017/auction_db?replicaSet=rs0
+      - REDIS_URI=redis://redis:6379
       - DEFAULT_ROUND_DURATION_MS=300000
       - ANTI_SNIPE_THRESHOLD_MS=30000
       - ANTI_SNIPE_EXTENSION_MS=60000
       - MIN_BID_INCREMENT=10
-      - COOKIE_SECURE=false  # Для локального тестирования без HTTPS
+      - COOKIE_SECURE=false
     depends_on:
       mongo-init:
         condition: service_completed_successfully
+      redis:
+        condition: service_healthy
     restart: unless-stopped
 
   mongo:
@@ -33,7 +36,20 @@ services:
       retries: 10
     restart: unless-stopped
 
-  # Инициализация replica set (выполняется один раз)
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
   mongo-init:
     image: mongo:7
     depends_on:
@@ -51,3 +67,4 @@ services:
 
 volumes:
   mongo_data:
+  redis_data:

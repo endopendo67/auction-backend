@@ -13,6 +13,10 @@ export const config = {
     uri: process.env.MONGODB_URI || 'mongodb://localhost:27017/auction_db',
   },
   
+  redis: {
+    uri: process.env.REDIS_URI || 'redis://localhost:6379',
+  },
+  
   auction: {
     defaultRoundDurationMs: parseInt(process.env.DEFAULT_ROUND_DURATION_MS || '300000', 10),
     antiSnipeThresholdMs: parseInt(process.env.ANTI_SNIPE_THRESHOLD_MS || '30000', 10),

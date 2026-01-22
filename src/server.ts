@@ -4,12 +4,13 @@ import { connectDatabase } from './db/connection';
 import { config } from './config';
 import { logger } from './utils/logger';
 import { socketHandler } from './websocket/socket-handler';
-import { roundManagerService } from './services';
+import { roundManagerService, redisService } from './services';
 
 async function bootstrap(): Promise<void> {
   try {
-    // Connect to MongoDB
+    // Подключение к базам данных
     await connectDatabase();
+    await redisService.connect(); // Redis (опционально, работает и без него)
 
     // Create Express app
     const app = createApp();
@@ -36,6 +37,7 @@ async function bootstrap(): Promise<void> {
       logger.info(`Received ${signal}, shutting down gracefully...`);
       
       roundManagerService.stop();
+      await redisService.disconnect();
       
       server.close(() => {
         logger.info('HTTP server closed');

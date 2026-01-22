@@ -2,6 +2,7 @@ import mongoose, { Types, ClientSession } from 'mongoose';
 import { Bid, IBidDocument, BidStatus, Auction, AuctionStatus } from '../models';
 import { balanceService } from './balance.service';
 import { auctionService } from './auction.service';
+import { redisService } from './redis.service';
 import { config } from '../config';
 import { logger } from '../utils/logger';
 
@@ -137,6 +138,9 @@ export class BidService {
 
       await session.commitTransaction();
 
+      // Инвалидируем кэш (лидерборд и минимальная ставка)
+      redisService.invalidateAuctionCache(auctionId.toString()).catch(() => {});
+
       // Anti-sniping (вне транзакции)
       let roundExtended = false;
       try {
@@ -155,7 +159,11 @@ export class BidService {
   }
 
   async getLeaderboard(auctionId: Types.ObjectId, limit = 100): Promise<IBidDocument[]> {
-    return Bid.getLeaderboard(auctionId, limit);
+    // Кэшируем лидерборд в Redis (горячие данные)
+    return redisService.getCachedLeaderboard(
+      auctionId.toString(),
+      () => Bid.getLeaderboard(auctionId, limit)
+    );
   }
 
   async getUserBid(auctionId: Types.ObjectId, userId: Types.ObjectId): Promise<IBidDocument | null> {
@@ -188,23 +196,26 @@ export class BidService {
   }
 
   async getMinWinningBid(auctionId: Types.ObjectId): Promise<number | null> {
-    const auction = await Auction.findById(auctionId);
-    if (!auction || auction.status !== AuctionStatus.ACTIVE) return null;
+    // Кэшируем минимальную ставку в Redis
+    return redisService.getCachedMinBid(auctionId.toString(), async () => {
+      const auction = await Auction.findById(auctionId);
+      if (!auction || auction.status !== AuctionStatus.ACTIVE) return null;
 
-    const currentRound = auction.rounds[auction.currentRound];
-    if (!currentRound) return null;
+      const currentRound = auction.rounds[auction.currentRound];
+      if (!currentRound) return null;
 
-    const itemsInRound = currentRound.itemsToDistribute;
+      const itemsInRound = currentRound.itemsToDistribute;
 
-    const thresholdBid = await Bid.find({
-      auctionId,
-      status: { $in: [BidStatus.ACTIVE, BidStatus.CARRIED_OVER] },
-    })
-      .sort({ amount: -1, createdAt: 1 })
-      .skip(itemsInRound - 1)
-      .limit(1);
+      const thresholdBid = await Bid.find({
+        auctionId,
+        status: { $in: [BidStatus.ACTIVE, BidStatus.CARRIED_OVER] },
+      })
+        .sort({ amount: -1, createdAt: 1 })
+        .skip(itemsInRound - 1)
+        .limit(1);
 
-    return thresholdBid.length > 0 ? thresholdBid[0].amount : auction.startingPrice;
+      return thresholdBid.length > 0 ? thresholdBid[0].amount : auction.startingPrice;
+    });
   }
 
   /**
