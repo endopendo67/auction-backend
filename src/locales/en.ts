@@ -29,6 +29,7 @@ export const en = {
   
   'auctions.title': 'Auctions',
   'auctions.create': '+ Create',
+  'auctions.new_auction': 'New auction appeared!',
   'auctions.no_auctions': 'No auctions yet',
   'auctions.items': 'Items:',
   'auctions.round': 'Round:',

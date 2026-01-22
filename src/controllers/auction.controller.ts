@@ -3,6 +3,7 @@ import { Types } from 'mongoose';
 import { z } from 'zod';
 import { auctionService, bidService } from '../services';
 import { asyncHandler, createError } from '../middleware/error-handler';
+import { socketHandler } from '../websocket/socket-handler';
 
 const createAuctionSchema = z.object({
   title: z.string().min(1).max(128).trim(),
@@ -34,6 +35,9 @@ export const auctionController = {
       ...params,
       createdBy: new Types.ObjectId(params.createdBy),
     });
+    
+    // Уведомляем всех в лобби о новом аукционе
+    socketHandler.broadcastNewAuction(auction.id);
     
     res.status(201).json({
       success: true,

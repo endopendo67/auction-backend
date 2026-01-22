@@ -29,6 +29,7 @@ export const ru = {
   
   'auctions.title': 'Аукционы',
   'auctions.create': '+ Создать',
+  'auctions.new_auction': 'Появился новый аукцион!',
   'auctions.no_auctions': 'Аукционов пока нет',
   'auctions.items': 'Товаров:',
   'auctions.round': 'Раунд:',

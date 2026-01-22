@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="theme-color" content="#0f0f0f">
   <title data-i18n="app.title">Аукцион</title>
-  <link rel="stylesheet" href="/css/style.css?v=3">
+  <link rel="stylesheet" href="/css/style.css?v=4">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 </head>
@@ -92,7 +92,10 @@
       <section id="auctions-section" class="card hidden">
         <div class="section-header">
           <h2 data-i18n="auctions.title">Аукционы</h2>
-          <button id="create-auction-btn" class="btn-small" data-i18n="auctions.create">+ Создать</button>
+          <div class="section-actions">
+            <button id="refresh-auctions-btn" class="btn-small btn-secondary" title="Обновить">↻</button>
+            <button id="create-auction-btn" class="btn-small" data-i18n="auctions.create">+ Создать</button>
+          </div>
         </div>
         <div id="auctions-list" class="auctions-grid">
           <p class="empty-state" data-i18n="common.loading">Загрузка...</p>

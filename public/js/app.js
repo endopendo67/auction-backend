@@ -39,6 +39,7 @@ const el = {
   // Аукционы
   auctionsList: $('auctions-list'),
   createAuctionBtn: $('create-auction-btn'),
+  refreshAuctionsBtn: $('refresh-auctions-btn'),
   
   // Детали аукциона
   backBtn: $('back-btn'),
@@ -393,6 +394,18 @@ function updateAuctionsPagination() {
   el.auctionsNext.disabled = auctionsPage >= auctionsTotalPages;
 }
 
+async function refreshAuctions() {
+  el.refreshAuctionsBtn.disabled = true;
+  el.refreshAuctionsBtn.textContent = '⏳';
+  
+  try {
+    await loadAuctions(auctionsPage);
+  } finally {
+    el.refreshAuctionsBtn.disabled = false;
+    el.refreshAuctionsBtn.textContent = '↻';
+  }
+}
+
 function renderAuctionsList(auctions) {
   if (!auctions || !auctions.length) {
     el.auctionsList.innerHTML = `<p class="empty-state">${t('auctions.no_auctions')}</p>`;
@@ -569,13 +582,18 @@ function startTimer() {
 function startLeaderboardAutoRefresh() {
   stopLeaderboardAutoRefresh();
   
-  // Автообновление каждые 5 секунд
+  // Backup polling каждые 2 секунды (основные обновления через WebSocket push)
   state.leaderboardInterval = setInterval(async () => {
     if (state.currentAuction && state.currentAuction.status === 'active') {
-      await loadLeaderboard(state.currentAuction.id);
-      await loadUserStatus(state.currentAuction.id);
+      // Запрашиваем лидерборд через WS (сервер отправит push)
+      if (state.socket?.connected) {
+        state.socket.emit('auction:subscribe_leaderboard', state.currentAuction.id);
+      } else {
+        // Fallback на HTTP если WS отключён
+        await loadLeaderboard(state.currentAuction.id);
+      }
     }
-  }, 5000);
+  }, 2000);
 }
 
 function stopLeaderboardAutoRefresh() {
@@ -718,20 +736,50 @@ async function handleCreateAuction(e) {
 function initSocket() {
   state.socket = io({ transports: ['websocket', 'polling'] });
 
-  state.socket.on('connect', () => console.log('WS connected'));
+  state.socket.on('connect', () => {
+    console.log('WS connected');
+    // Автоматически подписываемся на лобби
+    state.socket.emit('lobby:join');
+  });
+  
   state.socket.on('disconnect', () => console.log('WS disconnected'));
+
+  // Лобби: новый аукцион появился
+  state.socket.on('lobby:new_auction', (data) => {
+    if (el.auctionsSection.classList.contains('hidden')) return;
+    loadAuctions(auctionsPage); // Обновляем список
+    notify(t('auctions.new_auction') || 'Новый аукцион!', 'info');
+  });
+
+  // Лобби: список аукционов обновился
+  state.socket.on('lobby:auctions_updated', (data) => {
+    if (el.auctionsSection.classList.contains('hidden')) return;
+    renderAuctionsList(data.auctions);
+  });
 
   state.socket.on('auction:event', (event) => {
     if (state.currentAuction && event.auctionId === state.currentAuction.id) {
       handleAuctionEvent(event);
     }
-    loadAuctions();
   });
 
+  // Push-обновление ставки (моментальное)
   state.socket.on('auction:new_bid', (data) => {
     if (state.currentAuction && data.auctionId === state.currentAuction.id) {
       el.minWinningBid.textContent = `${data.minWinningBid} ⭐`;
-      loadLeaderboard(data.auctionId);
+      // Не делаем loadLeaderboard — ждём push от сервера
+    }
+  });
+
+  // Push-обновление лидерборда (throttled на сервере)
+  state.socket.on('auction:leaderboard', (data) => {
+    if (state.currentAuction && data.auctionId === state.currentAuction.id) {
+      renderLeaderboard(data.leaderboard.map(b => ({
+        userId: { username: b.username },
+        amount: b.amount,
+        status: b.status,
+      })));
+      // Обновляем статус пользователя
       loadUserStatus(data.auctionId);
     }
   });
@@ -813,6 +861,7 @@ async function init() {
   el.historyNext.addEventListener('click', () => loadHistory(historyPage + 1));
   el.auctionsPrev.addEventListener('click', () => loadAuctions(auctionsPage - 1));
   el.auctionsNext.addEventListener('click', () => loadAuctions(auctionsPage + 1));
+  el.refreshAuctionsBtn.addEventListener('click', refreshAuctions);
   el.createAuctionBtn.addEventListener('click', openCreateForm);
   el.cancelCreateBtn.addEventListener('click', backToList);
   el.backBtn.addEventListener('click', backToList);
