@@ -79,13 +79,16 @@ const bidSchema = new Schema<IBidDocument>(
 );
 
 // Индексы для быстрого поиска
-bidSchema.index({ auctionId: 1, amount: -1 });
-bidSchema.index({ auctionId: 1, userId: 1 });
+// Основной индекс для лидерборда (amount DESC, createdAt ASC)
+bidSchema.index({ auctionId: 1, status: 1, amount: -1, createdAt: 1 });
+// Поиск ставки пользователя
+bidSchema.index({ auctionId: 1, userId: 1, status: 1 });
+// История пользователя
+bidSchema.index({ userId: 1, createdAt: -1 });
+// Подсчёт ставок по аукциону
 bidSchema.index({ auctionId: 1, status: 1 });
-bidSchema.index({ auctionId: 1, round: 1, amount: -1 });
-bidSchema.index({ userId: 1, status: 1 });
 
-// Получить лидерборд по аукциону
+// Получить лидерборд по аукциону (оптимизировано с hint на индекс)
 bidSchema.statics.getLeaderboard = function (
   auctionId: Types.ObjectId,
   limit = 100
@@ -94,9 +97,11 @@ bidSchema.statics.getLeaderboard = function (
     auctionId,
     status: { $in: [BidStatus.ACTIVE, BidStatus.CARRIED_OVER] },
   })
+    .hint({ auctionId: 1, status: 1, amount: -1, createdAt: 1 })
     .sort({ amount: -1, createdAt: 1 })
     .limit(limit)
     .populate('userId', 'username')
+    .lean()
     .exec();
 };
 

@@ -2,15 +2,31 @@ import mongoose, { ClientSession, Types } from 'mongoose';
 import { User, Transaction, TransactionType, IUserDocument } from '../models';
 import { logger } from '../utils/logger';
 
+// Лимиты для защиты от edge cases
+const LIMITS = {
+  MAX_DEPOSIT: 1_000_000_000, // 1 млрд
+  MAX_BALANCE: 10_000_000_000, // 10 млрд
+} as const;
+
 /**
  * Сервис балансов.
  * Все операции атомарны и логируются в Transaction.
+ * 
+ * EDGE CASES обработаны:
+ * - Отрицательные/нулевые суммы
+ * - Переполнение баланса
+ * - Конкурентные изменения (race conditions)
+ * - Несоответствие locked vs balance
  */
 export class BalanceService {
 
   async deposit(userId: Types.ObjectId, amount: number): Promise<IUserDocument> {
-    if (amount <= 0) {
-      throw new Error('Сумма депозита должна быть положительной');
+    // EDGE CASE: Невалидная сумма
+    if (!Number.isInteger(amount) || amount <= 0) {
+      throw new Error('Сумма депозита должна быть положительным целым числом');
+    }
+    if (amount > LIMITS.MAX_DEPOSIT) {
+      throw new Error(`Максимальный депозит: ${LIMITS.MAX_DEPOSIT}`);
     }
 
     const session = await mongoose.startSession();
@@ -23,6 +39,11 @@ export class BalanceService {
 
       const user = await User.findById(userId).session(session);
       if (!user) throw new Error('Пользователь не найден');
+
+      // EDGE CASE: Переполнение баланса
+      if (user.balance + amount > LIMITS.MAX_BALANCE) {
+        throw new Error(`Баланс превысит максимум (${LIMITS.MAX_BALANCE})`);
+      }
 
       const balanceBefore = user.balance;
       const lockedBefore = user.lockedBalance;
@@ -230,7 +251,11 @@ export class BalanceService {
     lockedBalance: number;
     availableBalance: number;
   }> {
-    const user = await User.findById(userId);
+    // Оптимизация: lean + select только нужные поля
+    const user = await User.findById(userId)
+      .select('balance lockedBalance')
+      .lean();
+    
     if (!user) throw new Error('Пользователь не найден');
 
     return {

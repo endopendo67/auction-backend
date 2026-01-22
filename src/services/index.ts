@@ -3,3 +3,4 @@ export { auctionService, AuctionService, CreateAuctionParams } from './auction.s
 export { bidService, BidService, PlaceBidResult } from './bid.service';
 export { roundManagerService, RoundEvent } from './round-manager.service';
 export { userService, UserService } from './user.service';
+export { redisService } from './redis.service';

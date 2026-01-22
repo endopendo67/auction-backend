@@ -3,6 +3,17 @@ import { Auction, IAuctionDocument, AuctionStatus, IRound } from '../models';
 import { config } from '../config';
 import { logger } from '../utils/logger';
 
+// Константы для валидации (защита от edge cases)
+const LIMITS = {
+  MAX_TITLE_LENGTH: 128,
+  MAX_DESCRIPTION_LENGTH: 1024,
+  MAX_ITEMS: 100000,
+  MAX_PRICE: 1_000_000_000, // 1 млрд
+  MAX_ROUNDS: 100,
+  MIN_ROUND_DURATION_MS: 10000, // 10 секунд минимум
+  MAX_ROUND_DURATION_MS: 86400000, // 24 часа максимум
+} as const;
+
 export interface CreateAuctionParams {
   title: string;
   description?: string;
@@ -27,6 +38,54 @@ export class AuctionService {
       startTime,
       createdBy,
     } = params;
+
+    // === EDGE CASE: Валидация входных данных ===
+    
+    // Пустой или слишком длинный title
+    if (!title?.trim()) {
+      throw new Error('Название аукциона обязательно');
+    }
+    if (title.length > LIMITS.MAX_TITLE_LENGTH) {
+      throw new Error(`Название слишком длинное (макс ${LIMITS.MAX_TITLE_LENGTH})`);
+    }
+    
+    // Слишком длинное описание
+    if (description && description.length > LIMITS.MAX_DESCRIPTION_LENGTH) {
+      throw new Error(`Описание слишком длинное (макс ${LIMITS.MAX_DESCRIPTION_LENGTH})`);
+    }
+    
+    // Некорректные числовые значения
+    if (!Number.isInteger(totalItems) || totalItems < 1 || totalItems > LIMITS.MAX_ITEMS) {
+      throw new Error(`Количество товаров должно быть от 1 до ${LIMITS.MAX_ITEMS}`);
+    }
+    
+    if (!Number.isInteger(startingPrice) || startingPrice < 1 || startingPrice > LIMITS.MAX_PRICE) {
+      throw new Error(`Начальная цена должна быть от 1 до ${LIMITS.MAX_PRICE}`);
+    }
+    
+    if (!Number.isInteger(minBidIncrement) || minBidIncrement < 1) {
+      throw new Error('Минимальный шаг должен быть положительным целым числом');
+    }
+    
+    // Пустой массив раундов
+    if (!roundsConfig?.length) {
+      throw new Error('Необходим хотя бы один раунд');
+    }
+    
+    if (roundsConfig.length > LIMITS.MAX_ROUNDS) {
+      throw new Error(`Слишком много раундов (макс ${LIMITS.MAX_ROUNDS})`);
+    }
+    
+    // Валидация каждого раунда
+    for (let i = 0; i < roundsConfig.length; i++) {
+      const rc = roundsConfig[i];
+      if (!Number.isInteger(rc.itemsToDistribute) || rc.itemsToDistribute < 1) {
+        throw new Error(`Раунд ${i + 1}: количество товаров должно быть >= 1`);
+      }
+      if (rc.durationMs < LIMITS.MIN_ROUND_DURATION_MS || rc.durationMs > LIMITS.MAX_ROUND_DURATION_MS) {
+        throw new Error(`Раунд ${i + 1}: длительность от ${LIMITS.MIN_ROUND_DURATION_MS / 1000}с до ${LIMITS.MAX_ROUND_DURATION_MS / 3600000}ч`);
+      }
+    }
 
     // Проверяем что сумма товаров по раундам совпадает с общим количеством
     const totalRoundItems = roundsConfig.reduce((sum, r) => sum + r.itemsToDistribute, 0);
@@ -156,7 +215,11 @@ export class AuctionService {
   }
 
   async checkRoundCompletion(auctionId: Types.ObjectId): Promise<boolean> {
-    const auction = await Auction.findById(auctionId);
+    // Оптимизация: lean + select только нужные поля
+    const auction = await Auction.findById(auctionId)
+      .select('status currentRound rounds')
+      .lean();
+    
     if (!auction || auction.status !== AuctionStatus.ACTIVE) return false;
 
     const currentRound = auction.rounds[auction.currentRound];
@@ -217,7 +280,11 @@ export class AuctionService {
     timeRemainingMs: number;
     isLastRound: boolean;
   } | null> {
-    const auction = await Auction.findById(auctionId);
+    // Оптимизация: lean + select
+    const auction = await Auction.findById(auctionId)
+      .select('status currentRound rounds')
+      .lean();
+    
     if (!auction || auction.status !== AuctionStatus.ACTIVE) return null;
 
     const round = auction.rounds[auction.currentRound];
@@ -225,9 +292,28 @@ export class AuctionService {
 
     return {
       round,
-      timeRemainingMs: Math.max(0, round.endTime.getTime() - Date.now()),
+      timeRemainingMs: Math.max(0, new Date(round.endTime).getTime() - Date.now()),
       isLastRound: auction.currentRound === auction.rounds.length - 1,
     };
+  }
+
+  /**
+   * Отмена аукциона (edge case: нужно вернуть все заблокированные средства)
+   */
+  async cancelAuction(auctionId: Types.ObjectId): Promise<IAuctionDocument> {
+    const auction = await Auction.findById(auctionId);
+    if (!auction) throw new Error('Аукцион не найден');
+
+    if (auction.status === AuctionStatus.COMPLETED) {
+      throw new Error('Нельзя отменить завершённый аукцион');
+    }
+
+    auction.status = AuctionStatus.CANCELLED;
+    auction.endTime = new Date();
+    await auction.save();
+
+    logger.info(`Аукцион отменён: ${auctionId}`);
+    return auction;
   }
 }
 

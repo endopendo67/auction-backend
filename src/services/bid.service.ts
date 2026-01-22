@@ -6,6 +6,12 @@ import { redisService } from './redis.service';
 import { config } from '../config';
 import { logger } from '../utils/logger';
 
+// Лимиты для защиты от edge cases
+const LIMITS = {
+  MAX_BID_AMOUNT: 1_000_000_000, // 1 млрд
+  MIN_TIME_BUFFER_MS: 100, // буфер на случай ставки на границе времени
+} as const;
+
 export interface PlaceBidResult {
   bid: IBidDocument;
   isNewBid: boolean;
@@ -19,16 +25,28 @@ export interface PlaceBidResult {
  */
 export class BidService {
   // Максимальное кол-во попыток при конфликте транзакций
-  private readonly MAX_RETRY_ATTEMPTS = 3;
+  private readonly MAX_RETRY_ATTEMPTS = 5; // увеличено для высокой нагрузки
 
   /**
    * Размещение или повышение ставки с повтором при конфликте.
+   * Включает rate limiting для защиты от спама.
    */
   async placeBid(
     auctionId: Types.ObjectId,
     userId: Types.ObjectId,
     amount: number
   ): Promise<PlaceBidResult> {
+    // EDGE CASE: Rate limiting — макс 10 ставок в 5 секунд от одного пользователя
+    const rateLimit = await redisService.checkRateLimit(
+      `bid:${userId}`,
+      10, // max requests
+      5   // window seconds
+    );
+    
+    if (!rateLimit.allowed) {
+      throw new Error('Слишком много запросов. Подождите немного');
+    }
+
     let lastError: Error | null = null;
 
     for (let attempt = 0; attempt < this.MAX_RETRY_ATTEMPTS; attempt++) {
@@ -54,6 +72,14 @@ export class BidService {
     userId: Types.ObjectId,
     amount: number
   ): Promise<PlaceBidResult> {
+    // === EDGE CASE: Валидация суммы до начала транзакции ===
+    if (!Number.isInteger(amount) || amount < 1) {
+      throw new Error('Сумма ставки должна быть положительным целым числом');
+    }
+    if (amount > LIMITS.MAX_BID_AMOUNT) {
+      throw new Error(`Максимальная ставка: ${LIMITS.MAX_BID_AMOUNT}`);
+    }
+
     const session = await mongoose.startSession();
     
     try {
@@ -62,7 +88,7 @@ export class BidService {
         writeConcern: { w: 'majority' },
       });
 
-      // Валидация аукциона
+      // Валидация аукциона (lean для скорости, потом полный объект если нужен)
       const auction = await Auction.findById(auctionId).session(session);
       if (!auction) throw new Error('Аукцион не найден');
       if (auction.status !== AuctionStatus.ACTIVE) {
@@ -74,10 +100,13 @@ export class BidService {
         throw new Error('Нет активного раунда');
       }
 
-      if (Date.now() >= currentRound.endTime.getTime()) {
-        throw new Error('Раунд уже завершён');
+      // EDGE CASE: Ставка на границе времени (добавляем буфер)
+      const timeToEnd = currentRound.endTime.getTime() - Date.now();
+      if (timeToEnd <= LIMITS.MIN_TIME_BUFFER_MS) {
+        throw new Error('Раунд завершается, попробуйте позже');
       }
 
+      // EDGE CASE: Ставка ниже стартовой цены
       if (amount < auction.startingPrice) {
         throw new Error(`Минимальная ставка: ${auction.startingPrice}`);
       }
@@ -198,7 +227,11 @@ export class BidService {
   async getMinWinningBid(auctionId: Types.ObjectId): Promise<number | null> {
     // Кэшируем минимальную ставку в Redis
     return redisService.getCachedMinBid(auctionId.toString(), async () => {
-      const auction = await Auction.findById(auctionId);
+      // Оптимизация: lean + select только нужные поля
+      const auction = await Auction.findById(auctionId)
+        .select('status currentRound rounds startingPrice')
+        .lean();
+      
       if (!auction || auction.status !== AuctionStatus.ACTIVE) return null;
 
       const currentRound = auction.rounds[auction.currentRound];
@@ -206,21 +239,43 @@ export class BidService {
 
       const itemsInRound = currentRound.itemsToDistribute;
 
-      const thresholdBid = await Bid.find({
+      // EDGE CASE: Нет ставок — возвращаем стартовую цену
+      const totalBids = await Bid.countDocuments({
+        auctionId,
+        status: { $in: [BidStatus.ACTIVE, BidStatus.CARRIED_OVER] },
+      });
+
+      if (totalBids === 0) {
+        return auction.startingPrice;
+      }
+
+      // EDGE CASE: Меньше участников чем товаров — все выигрывают
+      if (totalBids < itemsInRound) {
+        return auction.startingPrice;
+      }
+
+      // Находим пороговую ставку (N-ю по рангу)
+      const thresholdBid = await Bid.findOne({
         auctionId,
         status: { $in: [BidStatus.ACTIVE, BidStatus.CARRIED_OVER] },
       })
         .sort({ amount: -1, createdAt: 1 })
         .skip(itemsInRound - 1)
-        .limit(1);
+        .select('amount')
+        .lean();
 
-      return thresholdBid.length > 0 ? thresholdBid[0].amount : auction.startingPrice;
+      return thresholdBid?.amount || auction.startingPrice;
     });
   }
 
   /**
    * Обработка победителей раунда.
    * Топ-N получают товар, остальные переносятся или получают возврат.
+   * 
+   * EDGE CASES:
+   * - Нет участников — раунд просто завершается
+   * - Меньше участников чем товаров — все выигрывают
+   * - Равные ставки — выигрывает кто раньше поставил
    */
   async processRoundWinners(auctionId: Types.ObjectId): Promise<{
     winners: IBidDocument[];
@@ -242,7 +297,7 @@ export class BidService {
       const itemsToDistribute = currentRound.itemsToDistribute;
       const isLastRound = auction.currentRound === auction.rounds.length - 1;
 
-      // Все активные ставки
+      // Все активные ставки отсортированы по amount DESC, createdAt ASC
       const allBids = await Bid.find({
         auctionId,
         status: { $in: [BidStatus.ACTIVE, BidStatus.CARRIED_OVER] },
@@ -255,10 +310,32 @@ export class BidService {
       let refunded = 0;
       let itemNumber = auction.distributedItems + 1;
 
+      // EDGE CASE: Нет участников — просто завершаем раунд
+      if (allBids.length === 0) {
+        logger.info(`Раунд ${auction.currentRound} завершён без участников`);
+        
+        await Auction.updateOne(
+          { _id: auctionId },
+          {
+            $set: {
+              [`rounds.${auction.currentRound}.status`]: 'completed',
+              [`rounds.${auction.currentRound}.winnersCount`]: 0,
+            },
+          },
+          { session }
+        );
+
+        await session.commitTransaction();
+        return { winners: [], carriedOver: 0, refunded: 0 };
+      }
+
+      // EDGE CASE: Меньше участников чем товаров — все выигрывают
+      const actualWinners = Math.min(allBids.length, itemsToDistribute);
+
       for (let i = 0; i < allBids.length; i++) {
         const bid = allBids[i];
 
-        if (i < itemsToDistribute) {
+        if (i < actualWinners) {
           bid.status = BidStatus.WON;
           bid.itemNumber = itemNumber++;
 
@@ -270,6 +347,7 @@ export class BidService {
 
           logger.info(`Победитель: user=${bid.userId}, item=#${bid.itemNumber}, amount=${bid.amount}`);
         } else if (isLastRound) {
+          // Последний раунд — возвращаем деньги проигравшим
           bid.status = BidStatus.REFUNDED;
           await balanceService.refundFunds(
             bid.userId, bid.amount, auctionId, bid._id as Types.ObjectId, session
@@ -277,6 +355,7 @@ export class BidService {
           await bid.save({ session });
           refunded++;
         } else {
+          // Переносим в следующий раунд
           bid.status = BidStatus.CARRIED_OVER;
           bid.round = auction.currentRound + 1;
           await bid.save({ session });
@@ -297,6 +376,9 @@ export class BidService {
       );
 
       await session.commitTransaction();
+
+      // Инвалидируем кэш после завершения раунда
+      redisService.invalidateAuctionCache(auctionId.toString()).catch(() => {});
 
       logger.info(`Раунд ${auction.currentRound} завершён: winners=${winners.length}, carried=${carriedOver}, refunded=${refunded}`);
       return { winners, carriedOver, refunded };
