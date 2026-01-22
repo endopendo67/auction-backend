@@ -13,6 +13,7 @@ services:
       - ANTI_SNIPE_THRESHOLD_MS=30000
       - ANTI_SNIPE_EXTENSION_MS=60000
       - MIN_BID_INCREMENT=10
+      - COOKIE_SECURE=false  # Для локального тестирования без HTTPS
     depends_on:
       mongo-init:
         condition: service_completed_successfully

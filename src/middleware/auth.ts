@@ -55,9 +55,14 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
  * Устанавливает сессионную куку.
  */
 export function setSessionCookie(res: Response, userId: string): void {
+  // COOKIE_SECURE=false позволяет работать без HTTPS (для локального тестирования)
+  const isSecure = process.env.COOKIE_SECURE === 'false' 
+    ? false 
+    : process.env.NODE_ENV === 'production';
+  
   res.cookie(COOKIE_NAME, userId, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: isSecure,
     sameSite: 'lax',
     maxAge: COOKIE_MAX_AGE,
     path: '/',
