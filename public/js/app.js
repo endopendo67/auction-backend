@@ -15,8 +15,13 @@ const el = {
   authSection: $('auth-section'),
   userPanel: $('user-panel'),
   auctionsSection: $('auctions-section'),
+  auctionsPagination: $('auctions-pagination'),
+  auctionsPrev: $('auctions-prev'),
+  auctionsNext: $('auctions-next'),
+  auctionsPage: $('auctions-page'),
   auctionDetail: $('auction-detail'),
   createAuctionSection: $('create-auction-section'),
+  historySection: $('history-section'),
   
   // Авторизация
   loginForm: $('login-form'),
@@ -56,6 +61,15 @@ const el = {
   createAuctionForm: $('create-auction-form'),
   addRoundBtn: $('add-round-btn'),
   roundsConfig: $('rounds-config'),
+  
+  // История
+  historyBtn: $('history-btn'),
+  historyBackBtn: $('history-back-btn'),
+  historyList: $('history-list'),
+  historyPagination: $('history-pagination'),
+  historyPrev: $('history-prev'),
+  historyNext: $('history-next'),
+  historyPage: $('history-page'),
   
   // Уведомления
   notifications: $('notifications'),
@@ -128,6 +142,10 @@ const api = {
   
   getUserBidStatus: (auctionId, userId) => 
     api.request(`/auctions/${auctionId}/user/${userId}/status`),
+  
+  // History
+  getBidHistory: (userId, page = 1, limit = 20) => 
+    api.request(`/users/${userId}/bids?page=${page}&limit=${limit}`),
 };
 
 // Уведомления
@@ -275,13 +293,104 @@ async function handleDeposit() {
 // АУКЦИОНЫ
 // =====================
 
-async function loadAuctions() {
+// ==================== ИСТОРИЯ ====================
+let historyPage = 1;
+let historyTotalPages = 1;
+
+async function loadHistory(page = 1) {
+  if (!state.user) return;
+  
+  el.historyList.innerHTML = `<p class="empty-state">${t('common.loading')}</p>`;
+  
   try {
-    const result = await api.getAuctions();
+    const result = await api.getBidHistory(state.user.id, page, 20);
+    historyPage = result.pagination.page;
+    historyTotalPages = result.pagination.pages;
+    renderHistory(result.data);
+    updateHistoryPagination();
+  } catch (err) {
+    el.historyList.innerHTML = `<p class="empty-state">${t('common.error')}</p>`;
+  }
+}
+
+function renderHistory(bids) {
+  if (!bids || !bids.length) {
+    el.historyList.innerHTML = `<p class="empty-state">${t('history.no_bids')}</p>`;
+    el.historyPagination.classList.add('hidden');
+    return;
+  }
+  
+  el.historyList.innerHTML = bids.map(bid => {
+    const date = new Date(bid.createdAt).toLocaleString();
+    const auctionTitle = bid.auctionId?.title || t('history.unknown_auction');
+    const isWinner = bid.isWinner;
+    
+    return `
+      <div class="history-item ${isWinner ? 'winner' : ''}">
+        <div class="history-item-main">
+          <span class="history-auction">${auctionTitle}</span>
+          <span class="history-amount">${bid.amount} ⭐</span>
+        </div>
+        <div class="history-item-meta">
+          <span class="history-date">${date}</span>
+          ${isWinner ? `<span class="history-badge winner">${t('history.won')}</span>` : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function updateHistoryPagination() {
+  if (historyTotalPages <= 1) {
+    el.historyPagination.classList.add('hidden');
+    return;
+  }
+  
+  el.historyPagination.classList.remove('hidden');
+  el.historyPage.textContent = `${historyPage} / ${historyTotalPages}`;
+  el.historyPrev.disabled = historyPage <= 1;
+  el.historyNext.disabled = historyPage >= historyTotalPages;
+}
+
+function showHistory() {
+  el.auctionsSection.classList.add('hidden');
+  el.auctionDetail.classList.add('hidden');
+  el.createAuctionSection.classList.add('hidden');
+  el.historySection.classList.remove('hidden');
+  loadHistory(1);
+}
+
+function hideHistory() {
+  el.historySection.classList.add('hidden');
+  el.auctionsSection.classList.remove('hidden');
+}
+
+// ==================== АУКЦИОНЫ ====================
+let auctionsPage = 1;
+let auctionsTotalPages = 1;
+
+async function loadAuctions(page = 1) {
+  try {
+    const result = await api.getAuctions(page, 20);
+    auctionsPage = result.pagination.page;
+    auctionsTotalPages = result.pagination.pages;
     renderAuctionsList(result.data);
+    updateAuctionsPagination();
   } catch (err) {
     el.auctionsList.innerHTML = `<p class="empty-state">${t('common.error')}</p>`;
   }
+}
+
+function updateAuctionsPagination() {
+  if (auctionsTotalPages <= 1) {
+    el.auctionsPagination.classList.add('hidden');
+    return;
+  }
+  
+  el.auctionsPagination.classList.remove('hidden');
+  el.auctionsPage.textContent = `${auctionsPage} / ${auctionsTotalPages}`;
+  el.auctionsPrev.disabled = auctionsPage <= 1;
+  el.auctionsNext.disabled = auctionsPage >= auctionsTotalPages;
 }
 
 function renderAuctionsList(auctions) {
@@ -698,6 +807,12 @@ async function init() {
   el.loginForm.addEventListener('submit', handleLogin);
   el.logoutBtn.addEventListener('click', handleLogout);
   el.depositBtn.addEventListener('click', handleDeposit);
+  el.historyBtn.addEventListener('click', showHistory);
+  el.historyBackBtn.addEventListener('click', hideHistory);
+  el.historyPrev.addEventListener('click', () => loadHistory(historyPage - 1));
+  el.historyNext.addEventListener('click', () => loadHistory(historyPage + 1));
+  el.auctionsPrev.addEventListener('click', () => loadAuctions(auctionsPage - 1));
+  el.auctionsNext.addEventListener('click', () => loadAuctions(auctionsPage + 1));
   el.createAuctionBtn.addEventListener('click', openCreateForm);
   el.cancelCreateBtn.addEventListener('click', backToList);
   el.backBtn.addEventListener('click', backToList);

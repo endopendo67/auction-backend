@@ -790,6 +790,93 @@ textarea {
 }
 
 /* ==================== */
+/* HISTORY */
+/* ==================== */
+#history-section h2 {
+  margin-bottom: 16px;
+}
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.history-item {
+  background: var(--bg-primary);
+  border-radius: var(--border-radius-sm);
+  padding: 12px 16px;
+  border: 1px solid var(--border-color);
+}
+
+.history-item.winner {
+  border-color: var(--success);
+  background: rgba(45, 166, 79, 0.1);
+}
+
+.history-item-main {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.history-auction {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.history-amount {
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.history-item-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.history-badge.winner {
+  background: var(--success);
+  color: white;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-weight: 500;
+}
+
+/* ==================== */
+/* PAGINATION */
+/* ==================== */
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.pagination .btn-small {
+  min-width: 40px;
+}
+
+.pagination span {
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+/* ==================== */
+/* USER ACTIONS */
+/* ==================== */
+.user-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* ==================== */
 /* SCROLLBAR */
 /* ==================== */
 ::-webkit-scrollbar {

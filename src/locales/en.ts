@@ -102,4 +102,10 @@ export const en = {
   'error.auction_not_active': 'Auction is not active',
   'error.round_ended': 'Round has ended',
   'error.bid_too_low': 'Bid is too low',
+  
+  'history.button': '📜 History',
+  'history.title': '📜 Bid History',
+  'history.no_bids': 'No bids yet',
+  'history.unknown_auction': 'Auction',
+  'history.won': '🏆 Won',
 };

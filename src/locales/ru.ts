@@ -102,4 +102,10 @@ export const ru = {
   'error.auction_not_active': 'Аукцион не активен',
   'error.round_ended': 'Раунд уже завершён',
   'error.bid_too_low': 'Ставка слишком низкая',
+  
+  'history.button': '📜 История',
+  'history.title': '📜 История ставок',
+  'history.no_bids': 'Ставок пока нет',
+  'history.unknown_auction': 'Аукцион',
+  'history.won': '🏆 Выиграно',
 };

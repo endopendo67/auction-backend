@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="theme-color" content="#0f0f0f">
   <title data-i18n="app.title">Аукцион</title>
-  <link rel="stylesheet" href="/css/style.css?v=2">
+  <link rel="stylesheet" href="/css/style.css?v=3">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 </head>
@@ -46,7 +46,10 @@
           <div class="user-info">
             <span id="user-name">—</span>
           </div>
-          <button id="logout-btn" class="btn-small btn-secondary" data-i18n="auth.logout">Выйти</button>
+          <div class="user-actions">
+            <button id="history-btn" class="btn-small btn-secondary" data-i18n="history.button">📜 История</button>
+            <button id="logout-btn" class="btn-small btn-secondary" data-i18n="auth.logout">Выйти</button>
+          </div>
         </div>
         
         <h3 data-i18n="balance.title">Ваш баланс</h3>
@@ -71,6 +74,20 @@
         </div>
       </section>
 
+      <!-- История пользователя -->
+      <section id="history-section" class="card hidden">
+        <button id="history-back-btn" class="btn-link" data-i18n="common.back">← Назад</button>
+        <h2 data-i18n="history.title">📜 История ставок</h2>
+        <div id="history-list" class="history-list">
+          <p class="empty-state" data-i18n="common.loading">Загрузка...</p>
+        </div>
+        <div id="history-pagination" class="pagination hidden">
+          <button id="history-prev" class="btn-small btn-secondary">←</button>
+          <span id="history-page">1</span>
+          <button id="history-next" class="btn-small btn-secondary">→</button>
+        </div>
+      </section>
+
       <!-- Список аукционов -->
       <section id="auctions-section" class="card hidden">
         <div class="section-header">
@@ -79,6 +96,11 @@
         </div>
         <div id="auctions-list" class="auctions-grid">
           <p class="empty-state" data-i18n="common.loading">Загрузка...</p>
+        </div>
+        <div id="auctions-pagination" class="pagination hidden">
+          <button id="auctions-prev" class="btn-small btn-secondary">←</button>
+          <span id="auctions-page">1</span>
+          <button id="auctions-next" class="btn-small btn-secondary">→</button>
         </div>
       </section>
 
