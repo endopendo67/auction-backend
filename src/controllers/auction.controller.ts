@@ -25,7 +25,7 @@ const createAuctionSchema = z.object({
 
 const startAuctionSchema = z.object({
   enableBotSimulation: z.boolean().optional().default(false),
-  botCount: z.number().int().min(2).max(20).optional().default(5),
+  botCount: z.number().int().min(2).max(100).optional().default(10),
 });
 
 const placeBidSchema = z.object({

@@ -87,8 +87,7 @@ export const en = {
   'create.items_mismatch': 'Round items ({sum}) must equal total items ({total})',
   'create.success': 'Auction created and started!',
   'create.error': 'Error creating auction',
-  'create.enable_bots': 'Test mode with bots',
-  'create.bot_hint': 'Virtual participants will actively compete for items',
+  'create.enable_bots': 'Test mode',
   
   'event.round_started': 'Round {n} started!',
   'event.round_ending': 'Round ending soon!',

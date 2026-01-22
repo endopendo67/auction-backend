@@ -243,13 +243,10 @@
             <button type="button" id="add-round-btn" class="btn-small btn-secondary" data-i18n="create.add_round">+ Добавить раунд</button>
           </div>
           
-          <div class="form-group bot-simulation">
-            <label class="checkbox-label bot-toggle">
-              <input type="checkbox" id="enable-bot-simulation">
-              <span class="bot-toggle-text" data-i18n="create.enable_bots">Тестовый режим с ботами</span>
-            </label>
-            <small class="bot-hint" data-i18n="create.bot_hint">Виртуальные участники будут активно конкурировать за товары</small>
-          </div>
+          <label class="bot-toggle">
+            <input type="checkbox" id="enable-bot-simulation">
+            <span data-i18n="create.enable_bots">Тестовый режим</span>
+          </label>
           
           <button type="submit" class="btn-success" style="width: 100%; margin-top: 8px;" data-i18n="common.create">Создать</button>
         </form>
