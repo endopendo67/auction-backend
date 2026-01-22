@@ -409,13 +409,8 @@ async function refreshAuctions() {
   }
 }
 
-function renderAuctionsList(auctions) {
-  if (!auctions || !auctions.length) {
-    el.auctionsList.innerHTML = `<p class="empty-state">${t('auctions.no_auctions')}</p>`;
-    return;
-  }
-
-  el.auctionsList.innerHTML = auctions.map(a => `
+function renderAuctionCard(a) {
+  return `
     <div class="auction-card" data-id="${a.id}">
       <div class="auction-card-header">
         <h3>${escapeHtml(a.title)}</h3>
@@ -427,11 +422,43 @@ function renderAuctionsList(auctions) {
         <span>${t('auctions.starting_price')} ${a.startingPrice} ⭐</span>
       </div>
     </div>
-  `).join('');
+  `;
+}
+
+function renderAuctionsList(auctions) {
+  if (!auctions || !auctions.length) {
+    el.auctionsList.innerHTML = `<p class="empty-state">${t('auctions.no_auctions')}</p>`;
+    return;
+  }
+
+  el.auctionsList.innerHTML = auctions.map(renderAuctionCard).join('');
 
   el.auctionsList.querySelectorAll('.auction-card').forEach(card => {
     card.addEventListener('click', () => openAuction(card.dataset.id));
   });
+}
+
+// Добавить аукцион в начало списка (без перезагрузки)
+function prependAuction(auction) {
+  const emptyState = el.auctionsList.querySelector('.empty-state');
+  if (emptyState) emptyState.remove();
+  
+  const existing = el.auctionsList.querySelector(`[data-id="${auction.id}"]`);
+  if (existing) return; // Уже есть
+  
+  el.auctionsList.insertAdjacentHTML('afterbegin', renderAuctionCard(auction));
+  const card = el.auctionsList.querySelector(`[data-id="${auction.id}"]`);
+  card?.addEventListener('click', () => openAuction(auction.id));
+}
+
+// Обновить карточку аукциона (статус, раунд и т.д.)
+function updateAuctionCard(auction) {
+  const card = el.auctionsList.querySelector(`[data-id="${auction.id}"]`);
+  if (!card) return;
+  
+  card.outerHTML = renderAuctionCard(auction);
+  const newCard = el.auctionsList.querySelector(`[data-id="${auction.id}"]`);
+  newCard?.addEventListener('click', () => openAuction(auction.id));
 }
 
 async function openAuction(auctionId) {
@@ -593,7 +620,7 @@ function startTimer() {
 function startLeaderboardAutoRefresh() {
   stopLeaderboardAutoRefresh();
   
-  // Backup polling каждые 2 секунды (основные обновления через WebSocket push)
+  // Backup polling раз в 10 секунд (основные обновления через WebSocket push)
   state.leaderboardInterval = setInterval(async () => {
     if (state.currentAuction && state.currentAuction.status === 'active') {
       // Запрашиваем лидерборд через WS (сервер отправит push)
@@ -604,7 +631,7 @@ function startLeaderboardAutoRefresh() {
         await loadLeaderboard(state.currentAuction.id);
       }
     }
-  }, 2000);
+  }, 10000);
 }
 
 function stopLeaderboardAutoRefresh() {
@@ -755,14 +782,20 @@ function initSocket() {
   
   state.socket.on('disconnect', () => console.log('WS disconnected'));
 
-  // Лобби: новый аукцион появился
+  // Лобби: новый аукцион появился (добавляем мгновенно без запроса)
   state.socket.on('lobby:new_auction', (data) => {
     if (el.auctionsSection.classList.contains('hidden')) return;
-    loadAuctions(auctionsPage); // Обновляем список
+    prependAuction(data.auction);
     notify(t('auctions.new_auction') || 'Новый аукцион!', 'info');
   });
 
-  // Лобби: список аукционов обновился
+  // Лобби: статус аукциона изменился
+  state.socket.on('lobby:auction_status', (data) => {
+    if (el.auctionsSection.classList.contains('hidden')) return;
+    updateAuctionCard(data.auction);
+  });
+
+  // Лобби: список аукционов обновился (fallback)
   state.socket.on('lobby:auctions_updated', (data) => {
     if (el.auctionsSection.classList.contains('hidden')) return;
     renderAuctionsList(data.auctions);

@@ -21,8 +21,8 @@ class SocketHandler {
   private lobbyClients: Set<string> = new Set(); // Клиенты в лобби (список аукционов)
   private pendingLeaderboardUpdates: Map<string, PendingLeaderboardUpdate> = new Map();
   
-  // Throttle: не чаще чем раз в 500мс отправляем обновления лидерборда
-  private readonly LEADERBOARD_THROTTLE_MS = 500;
+  // Throttle: не чаще чем раз в 200мс отправляем обновления лидерборда
+  private readonly LEADERBOARD_THROTTLE_MS = 200;
 
   initialize(httpServer: HttpServer): Server {
     this.io = new Server(httpServer, {
@@ -43,9 +43,9 @@ class SocketHandler {
     roundManagerService.on('round_event', (event: RoundEvent) => {
       this.broadcastToAuction(event.auctionId, 'auction:event', event);
       
-      // Уведомляем лобби об изменении статуса аукциона
-      if (event.type === 'auction_completed' || event.type === 'round_ended') {
-        this.broadcastAuctionsUpdate();
+      // Уведомляем лобби об изменении статуса (мгновенно)
+      if (event.type === 'round_started' || event.type === 'round_ended' || event.type === 'auction_completed') {
+        this.broadcastAuctionStatus(event.auctionId);
       }
     });
 
@@ -206,6 +206,22 @@ class SocketHandler {
       }
     } catch (error) {
       logger.error(`Ошибка рассылки нового аукциона: ${error}`);
+    }
+  }
+
+  // Уведомление об изменении статуса аукциона (начат, завершён и т.д.)
+  async broadcastAuctionStatus(auctionId: string): Promise<void> {
+    if (!this.io) return;
+    
+    try {
+      const auction = await auctionService.getAuction(new Types.ObjectId(auctionId));
+      if (auction) {
+        this.io.to('lobby').emit('lobby:auction_status', {
+          auction: auction.toJSON(),
+        });
+      }
+    } catch (error) {
+      logger.error(`Ошибка рассылки статуса аукциона: ${error}`);
     }
   }
 
