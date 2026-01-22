@@ -60,7 +60,6 @@ export const en = {
   'auction.extension_count': 'Extensions:',
   
   'leaderboard.title': 'Leaderboard',
-  'leaderboard.refresh': '↻ Refresh',
   'leaderboard.you': '(You)',
   'leaderboard.no_bids': 'No bids yet',
   'leaderboard.position': 'Position',

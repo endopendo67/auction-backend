@@ -438,14 +438,14 @@ async function refreshLeaderboard() {
   if (!state.currentAuction) return;
   
   el.refreshLeaderboardBtn.disabled = true;
-  el.refreshLeaderboardBtn.textContent = '...';
+  el.refreshLeaderboardBtn.textContent = '⏳';
   
   try {
     await loadLeaderboard(state.currentAuction.id);
     await loadUserStatus(state.currentAuction.id);
   } finally {
     el.refreshLeaderboardBtn.disabled = false;
-    el.refreshLeaderboardBtn.textContent = t('leaderboard.refresh');
+    el.refreshLeaderboardBtn.textContent = '↻';
   }
 }
 
