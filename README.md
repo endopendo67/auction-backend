@@ -1,6 +1,4 @@
-# 🎁 Telegram Gift Auctions Clone
-
-> Проект для конкурса [CryptoBot Backend Challenge]
+# Проект для конкурса [CryptoBot Backend Challenge]
 
 Воспроизведение механики аукционов Telegram на лимитированные цифровые подарки.
 
