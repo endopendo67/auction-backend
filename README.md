@@ -2,6 +2,8 @@
 
 Бэкенд аукционной системы по типу Telegram Gift Auctions.
 
+🌐 **Live-демо:** [auction-demo.lol](https://auction-demo.lol)
+
 ## Быстрый старт (Docker)
 
 ```bash
