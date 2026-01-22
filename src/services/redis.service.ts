@@ -26,40 +26,60 @@ class RedisService {
     if (this.isConnected) return;
 
     try {
+      // Создаём клиент с отключенным auto-reconnect при ошибке
       this.client = new Redis(config.redis.uri, {
-        maxRetriesPerRequest: 3,
-        retryStrategy: (times) => {
-          if (times > 3) return null; // Прекращаем после 3 попыток
-          return Math.min(times * 100, 1000);
-        },
+        maxRetriesPerRequest: 1,
+        retryStrategy: () => null, // Не переподключаемся автоматически
         lazyConnect: true,
-        enableReadyCheck: true,
+        enableReadyCheck: false,
+        reconnectOnError: () => false,
       });
 
-      // Отдельное подключение для pub/sub
       this.subscriber = new Redis(config.redis.uri, {
-        maxRetriesPerRequest: 3,
+        maxRetriesPerRequest: 1,
+        retryStrategy: () => null,
         lazyConnect: true,
+        enableReadyCheck: false,
+        reconnectOnError: () => false,
       });
+
+      // Подавляем ошибки ДО подключения
+      this.client.on('error', () => {}); // Тихо игнорируем
+      this.subscriber.on('error', () => {});
 
       await this.client.connect();
       await this.subscriber.connect();
-
-      this.client.on('error', (err) => logger.warn('Redis client error:', err.message));
-      this.subscriber.on('error', (err) => logger.warn('Redis subscriber error:', err.message));
 
       this.isConnected = true;
       logger.info('Redis подключён');
     } catch (err: any) {
       logger.warn(`Redis недоступен (${err.message}), работаем без кэша`);
-      this.client = null;
-      this.subscriber = null;
+      // Очищаем клиенты чтобы не было утечек
+      this.cleanup();
     }
   }
 
+  private cleanup(): void {
+    if (this.client) {
+      this.client.disconnect();
+      this.client = null;
+    }
+    if (this.subscriber) {
+      this.subscriber.disconnect();
+      this.subscriber = null;
+    }
+    this.isConnected = false;
+  }
+
   async disconnect(): Promise<void> {
-    if (this.client) await this.client.quit();
-    if (this.subscriber) await this.subscriber.quit();
+    try {
+      if (this.client) await this.client.quit();
+      if (this.subscriber) await this.subscriber.quit();
+    } catch {
+      // Игнорируем ошибки при отключении
+    }
+    this.client = null;
+    this.subscriber = null;
     this.isConnected = false;
   }
 
