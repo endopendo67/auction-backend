@@ -47,7 +47,10 @@ const el = {
   auctionStatus: $('auction-status'),
   auctionDescription: $('auction-description'),
   auctionRound: $('auction-round'),
+  auctionRoundItems: $('auction-round-items'),
   auctionItems: $('auction-items'),
+  auctionExtensions: $('auction-extensions'),
+  extensionsStat: $('extensions-stat'),
   auctionTime: $('auction-time'),
   minWinningBid: $('min-winning-bid'),
   yourBid: $('your-bid'),
@@ -459,6 +462,14 @@ async function loadAuctionDetail(auctionId) {
   el.auctionStatus.textContent = t('status.' + a.status);
   el.auctionStatus.className = `status-badge ${a.status}`;
   el.auctionRound.textContent = `${a.currentRound + 1} / ${a.rounds.length}`;
+  
+  const round = a.rounds[a.currentRound];
+  if (round) {
+    el.auctionRoundItems.textContent = round.itemsToDistribute;
+    el.auctionExtensions.textContent = `${round.extensionCount || 0}/3`;
+    el.extensionsStat.style.display = a.status === 'active' ? '' : 'none';
+  }
+  
   el.auctionItems.textContent = `${a.totalItems - a.distributedItems} / ${a.totalItems}`;
   el.minWinningBid.textContent = `${a.minWinningBid || a.startingPrice} ⭐`;
   
@@ -789,6 +800,11 @@ function initSocket() {
     if (state.currentAuction && data.auctionId === state.currentAuction.id) {
       notify(t('event.round_ending') + t('auction.time_extended'), 'info');
       state.currentAuction.roundEndTime = new Date(data.newEndTime).getTime();
+      
+      // Обновляем счётчик продлений
+      if (data.extensionCount !== undefined) {
+        el.auctionExtensions.textContent = `${data.extensionCount}/3`;
+      }
     }
   });
 }

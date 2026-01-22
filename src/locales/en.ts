@@ -55,9 +55,10 @@ export const en = {
   'auction.bid_placed': 'Bid placed: {amount} ⭐',
   'auction.bid_raised': 'Bid raised to {amount} ⭐',
   'auction.time_extended': ' (Time extended!)',
-  'auction.items_in_round': 'Items in round:',
+  'auction.items_in_round': 'In round',
   'auction.total_items': 'Total items:',
   'auction.current_round': 'Current round:',
+  'auction.extensions': 'Extensions',
   'auction.extension_count': 'Extensions:',
   
   'leaderboard.title': 'Leaderboard',

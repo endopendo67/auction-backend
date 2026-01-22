@@ -55,9 +55,10 @@ export const ru = {
   'auction.bid_placed': 'Ставка размещена: {amount} ⭐',
   'auction.bid_raised': 'Ставка повышена до {amount} ⭐',
   'auction.time_extended': ' (Время продлено!)',
-  'auction.items_in_round': 'Товаров в раунде:',
+  'auction.items_in_round': 'В раунде',
   'auction.total_items': 'Всего товаров:',
   'auction.current_round': 'Текущий раунд:',
+  'auction.extensions': 'Продлений',
   'auction.extension_count': 'Продлений:',
   
   'leaderboard.title': 'Таблица лидеров',

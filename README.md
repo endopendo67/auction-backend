@@ -6,6 +6,8 @@
 
 🌐 **Live-демо:** [auction-demo.lol](https://auction-demo.lol)
 
+🎬 **Видео-демо:** [Смотреть на Streamable](https://streamable.com/cl5w2s)
+
 ## Быстрый старт (Docker)
 
 ```bash

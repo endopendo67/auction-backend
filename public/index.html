@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="theme-color" content="#0f0f0f">
   <title data-i18n="app.title">Аукцион</title>
-  <link rel="stylesheet" href="/css/style.css?v=4">
+  <link rel="stylesheet" href="/css/style.css?v=5">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 </head>
@@ -124,12 +124,20 @@
             <span id="auction-round" class="stat-value">—</span>
           </div>
           <div class="stat">
+            <span class="stat-label" data-i18n="auction.items_in_round">В раунде</span>
+            <span id="auction-round-items" class="stat-value">—</span>
+          </div>
+          <div class="stat">
             <span class="stat-label" data-i18n="auction.items_left">Осталось</span>
             <span id="auction-items" class="stat-value">—</span>
           </div>
           <div class="stat">
             <span class="stat-label" data-i18n="auction.time_remaining">Время</span>
             <span id="auction-time" class="stat-value">—</span>
+          </div>
+          <div class="stat" id="extensions-stat">
+            <span class="stat-label" data-i18n="auction.extensions">Продлений</span>
+            <span id="auction-extensions" class="stat-value">0/3</span>
           </div>
         </div>
         
