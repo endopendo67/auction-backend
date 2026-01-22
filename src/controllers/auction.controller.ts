@@ -194,4 +194,21 @@ export const auctionController = {
       },
     });
   }),
+
+  // Победители завершённого аукциона
+  getWinners: asyncHandler(async (req: Request, res: Response) => {
+    const auctionId = new Types.ObjectId(req.params.id);
+    const winners = await bidService.getAuctionWinners(auctionId);
+    
+    res.json({
+      success: true,
+      data: winners.map((bid, index) => ({
+        position: index + 1,
+        itemNumber: bid.itemNumber,
+        amount: bid.amount,
+        username: (bid.userId as any).username,
+        round: bid.round,
+      })),
+    });
+  }),
 };

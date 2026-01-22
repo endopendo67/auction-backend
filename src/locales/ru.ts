@@ -60,8 +60,10 @@ export const ru = {
   'auction.extension_count': 'Продлений:',
   
   'leaderboard.title': 'Таблица лидеров',
+  'leaderboard.winners_title': '🏆 Победители',
   'leaderboard.you': '(Вы)',
   'leaderboard.no_bids': 'Ставок пока нет',
+  'leaderboard.no_winners': 'Победителей нет',
   'leaderboard.position': 'Позиция',
   'leaderboard.user': 'Пользователь',
   'leaderboard.amount': 'Ставка',

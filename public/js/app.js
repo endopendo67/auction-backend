@@ -123,6 +123,9 @@ const api = {
   getLeaderboard: (auctionId, limit = 100) => 
     api.request(`/auctions/${auctionId}/leaderboard?limit=${limit}`),
   
+  getWinners: (auctionId) => 
+    api.request(`/auctions/${auctionId}/winners`),
+  
   getUserBidStatus: (auctionId, userId) => 
     api.request(`/auctions/${auctionId}/user/${userId}/status`),
 };
@@ -337,6 +340,19 @@ async function loadAuctionDetail(auctionId) {
   el.auctionItems.textContent = `${a.totalItems - a.distributedItems} / ${a.totalItems}`;
   el.minWinningBid.textContent = `${a.minWinningBid || a.startingPrice} ⭐`;
   
+  // Обновляем заголовок таблицы в зависимости от статуса
+  const leaderboardTitle = document.querySelector('.leaderboard-header h3');
+  if (leaderboardTitle) {
+    leaderboardTitle.setAttribute('data-i18n', a.status === 'completed' ? 'leaderboard.winners_title' : 'leaderboard.title');
+    leaderboardTitle.textContent = t(a.status === 'completed' ? 'leaderboard.winners_title' : 'leaderboard.title');
+  }
+  
+  // Скрываем форму ставок для завершённых аукционов
+  const bidSection = document.querySelector('.bid-section');
+  if (bidSection) {
+    bidSection.style.display = a.status === 'completed' ? 'none' : 'block';
+  }
+  
   if (round) {
     state.currentAuction.roundEndTime = new Date(round.endTime).getTime();
   }
@@ -347,8 +363,14 @@ async function loadAuctionDetail(auctionId) {
 
 async function loadLeaderboard(auctionId) {
   try {
-    const result = await api.getLeaderboard(auctionId, 50);
-    renderLeaderboard(result.data);
+    // Для завершённых аукционов показываем победителей
+    if (state.currentAuction?.status === 'completed') {
+      const result = await api.getWinners(auctionId);
+      renderWinners(result.data);
+    } else {
+      const result = await api.getLeaderboard(auctionId, 50);
+      renderLeaderboard(result.data);
+    }
   } catch (err) {
     el.leaderboardBody.innerHTML = `<tr><td colspan="3">${t('common.error')}</td></tr>`;
   }
@@ -373,6 +395,26 @@ function renderLeaderboard(bids) {
         <td>${bid.position}</td>
         <td>${escapeHtml(bid.username)}${isYou ? ' ' + t('leaderboard.you') : ''}</td>
         <td>${bid.amount} ⭐</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function renderWinners(winners) {
+  if (!winners || !winners.length) {
+    el.leaderboardBody.innerHTML = `<tr><td colspan="3">${t('leaderboard.no_winners')}</td></tr>`;
+    return;
+  }
+
+  el.leaderboardBody.innerHTML = winners.map((winner) => {
+    const isYou = state.user && winner.username === state.user.username;
+    const classes = ['winning', isYou ? 'you' : ''].filter(Boolean).join(' ');
+    
+    return `
+      <tr class="${classes}">
+        <td>🏆 #${winner.itemNumber}</td>
+        <td>${escapeHtml(winner.username)}${isYou ? ' ' + t('leaderboard.you') : ''}</td>
+        <td>${winner.amount} ⭐</td>
       </tr>
     `;
   }).join('');

@@ -60,8 +60,10 @@ export const en = {
   'auction.extension_count': 'Extensions:',
   
   'leaderboard.title': 'Leaderboard',
+  'leaderboard.winners_title': '🏆 Winners',
   'leaderboard.you': '(You)',
   'leaderboard.no_bids': 'No bids yet',
+  'leaderboard.no_winners': 'No winners',
   'leaderboard.position': 'Position',
   'leaderboard.user': 'User',
   'leaderboard.amount': 'Bid',

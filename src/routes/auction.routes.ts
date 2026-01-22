@@ -27,6 +27,9 @@ router.post('/:id/bid', auctionController.placeBid);
 // Get leaderboard
 router.get('/:id/leaderboard', auctionController.getLeaderboard);
 
+// Get winners (for completed auctions)
+router.get('/:id/winners', auctionController.getWinners);
+
 // Get user's bid status in auction
 router.get('/:id/user/:userId/status', auctionController.getUserBidStatus);
 

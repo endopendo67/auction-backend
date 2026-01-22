@@ -344,6 +344,18 @@ export class BidService {
 
     return { bids, total };
   }
+
+  /**
+   * Получить всех победителей аукциона (для показа после завершения).
+   */
+  async getAuctionWinners(auctionId: Types.ObjectId): Promise<IBidDocument[]> {
+    return Bid.find({
+      auctionId,
+      status: BidStatus.WON,
+    })
+      .sort({ itemNumber: 1 })
+      .populate('userId', 'username');
+  }
 }
 
 export const bidService = new BidService();
