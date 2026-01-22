@@ -1,0 +1,805 @@
+/* Основные стили интерфейса */
+
+:root {
+  /* Цвета из темы Telegram */
+  --bg-primary: #0f0f0f;
+  --bg-secondary: #212121;
+  --bg-card: #212121;
+  --bg-input: #2a2a2a;
+  
+  /* Текст */
+  --text-primary: #ffffff;
+  --text-secondary: #aaaaaa;
+  --text-hint: #777777;
+  
+  /* Акценты */
+  --accent: #8774e1;
+  --accent-hover: #9d8ce8;
+  --accent-muted: rgba(135, 116, 225, 0.15);
+  
+  /* Семантические цвета */
+  --success: #4caf50;
+  --success-muted: rgba(76, 175, 80, 0.15);
+  --danger: #e53935;
+  --danger-muted: rgba(229, 57, 53, 0.15);
+  --warning: #ff9800;
+  
+  /* Границы */
+  --border-color: #333333;
+  --border-radius: 12px;
+  --border-radius-sm: 8px;
+  --border-radius-lg: 16px;
+  --border-radius-full: 9999px;
+  
+  /* Тени */
+  --shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.4);
+  
+  /* Анимации */
+  --transition: 0.2s ease;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  min-height: 100vh;
+  line-height: 1.5;
+  font-size: 15px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Container */
+.container {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 0;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Header */
+header {
+  background: var(--bg-secondary);
+  padding: 16px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  border-bottom: 1px solid var(--border-color);
+}
+
+header h1 {
+  font-size: 18px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Language Selector */
+.lang-select {
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  padding: 8px 12px;
+  border-radius: var(--border-radius-full);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: var(--transition);
+}
+
+.lang-select:hover {
+  border-color: var(--accent);
+}
+
+.lang-select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* Hidden class */
+.hidden {
+  display: none !important;
+}
+
+/* Cards */
+.card {
+  background: var(--bg-card);
+  border-radius: var(--border-radius-lg);
+  padding: 20px;
+  margin: 12px 16px;
+  animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+  from { 
+    opacity: 0; 
+    transform: translateY(8px); 
+  }
+  to { 
+    opacity: 1; 
+    transform: translateY(0); 
+  }
+}
+
+.card h2 {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 16px;
+}
+
+.card h3 {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: var(--text-secondary);
+}
+
+/* Section headers */
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+/* ==================== */
+/* AUTH SECTION */
+/* ==================== */
+#auth-section {
+  margin: auto 16px;
+  padding: 32px 24px;
+}
+
+#auth-section h2 {
+  text-align: center;
+  font-size: 20px;
+  margin-bottom: 24px;
+}
+
+#login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ==================== */
+/* USER PANEL */
+/* ==================== */
+.user-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+#user-name {
+  font-weight: 600;
+  color: var(--accent);
+  font-size: 16px;
+}
+
+/* Balance */
+.balance-info {
+  margin-bottom: 20px;
+}
+
+.balance-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 14px;
+}
+
+.balance-row:last-child {
+  border-bottom: none;
+}
+
+.balance-row.available {
+  font-weight: 600;
+  font-size: 16px;
+  padding-top: 16px;
+}
+
+.balance-row.available span:first-child {
+  color: var(--success);
+}
+
+.balance-row.available span:last-child {
+  color: var(--success);
+}
+
+.deposit-form {
+  display: flex;
+  gap: 8px;
+}
+
+.deposit-form input {
+  flex: 1;
+}
+
+/* ==================== */
+/* INPUTS */
+/* ==================== */
+input, textarea, select {
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: 14px 16px;
+  color: var(--text-primary);
+  font-size: 15px;
+  transition: var(--transition);
+  width: 100%;
+}
+
+input:hover, textarea:hover, select:hover {
+  border-color: #444;
+}
+
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--bg-secondary);
+}
+
+input::placeholder, textarea::placeholder {
+  color: var(--text-hint);
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* ==================== */
+/* BUTTONS */
+/* ==================== */
+button {
+  padding: 14px 24px;
+  border-radius: var(--border-radius-full);
+  border: none;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+  background: var(--accent);
+  color: white;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+button:hover {
+  background: var(--accent-hover);
+  transform: translateY(-1px);
+}
+
+button:active {
+  transform: translateY(0);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: white;
+}
+
+.btn-secondary {
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+}
+
+.btn-secondary:hover {
+  background: var(--bg-secondary);
+  border-color: var(--accent);
+}
+
+.btn-success {
+  background: var(--success);
+}
+
+.btn-success:hover {
+  background: #5cbf60;
+}
+
+.btn-small {
+  padding: 8px 16px;
+  font-size: 13px;
+}
+
+.btn-link {
+  background: transparent;
+  color: var(--accent);
+  padding: 8px 0;
+  font-weight: 500;
+}
+
+.btn-link:hover {
+  background: transparent;
+  text-decoration: underline;
+}
+
+.btn-remove {
+  background: var(--danger);
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+.btn-remove:hover {
+  background: #ef5350;
+}
+
+/* ==================== */
+/* AUCTIONS LIST */
+/* ==================== */
+.auctions-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.auction-card {
+  background: var(--bg-input);
+  padding: 16px;
+  border-radius: var(--border-radius);
+  cursor: pointer;
+  transition: var(--transition);
+  border: 1px solid transparent;
+}
+
+.auction-card:hover {
+  border-color: var(--accent);
+  background: var(--bg-secondary);
+}
+
+.auction-card:active {
+  transform: scale(0.99);
+}
+
+.auction-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.auction-card-header h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  flex: 1;
+}
+
+.auction-card-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* Status badges */
+.status-badge {
+  padding: 4px 10px;
+  border-radius: var(--border-radius-full);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.status-badge.active {
+  background: var(--success-muted);
+  color: var(--success);
+}
+
+.status-badge.pending {
+  background: rgba(255, 152, 0, 0.15);
+  color: var(--warning);
+}
+
+.status-badge.completed {
+  background: rgba(170, 170, 170, 0.15);
+  color: var(--text-secondary);
+}
+
+.status-badge.cancelled {
+  background: var(--danger-muted);
+  color: var(--danger);
+}
+
+/* ==================== */
+/* AUCTION DETAIL */
+/* ==================== */
+.auction-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.auction-header h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.auction-description {
+  color: var(--text-secondary);
+  font-size: 14px;
+  margin-bottom: 16px;
+}
+
+.auction-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 16px 0;
+}
+
+.stat {
+  text-align: center;
+  padding: 16px 12px;
+  background: var(--bg-input);
+  border-radius: var(--border-radius);
+}
+
+.stat-label {
+  display: block;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.stat-value {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+/* ==================== */
+/* BID SECTION */
+/* ==================== */
+.bid-section {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border-color);
+}
+
+.current-bid-info,
+.your-bid-info,
+.your-position-info {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 0;
+  font-size: 14px;
+}
+
+.current-bid-info span:first-child,
+.your-bid-info span:first-child,
+.your-position-info span:first-child {
+  color: var(--text-secondary);
+}
+
+.bid-form {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.bid-form input {
+  flex: 1;
+}
+
+.bid-form button {
+  white-space: nowrap;
+}
+
+/* ==================== */
+/* LEADERBOARD */
+/* ==================== */
+.leaderboard {
+  margin-top: 24px;
+}
+
+.leaderboard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.leaderboard-header h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+.leaderboard-header .btn-small {
+  font-size: 12px;
+  padding: 6px 12px;
+}
+
+#leaderboard-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+#leaderboard-table th,
+#leaderboard-table td {
+  padding: 12px;
+  text-align: left;
+  font-size: 14px;
+}
+
+#leaderboard-table th {
+  color: var(--text-hint);
+  font-weight: 500;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+#leaderboard-table td {
+  border-bottom: 1px solid var(--border-color);
+}
+
+#leaderboard-table tr:last-child td {
+  border-bottom: none;
+}
+
+#leaderboard-table tr.winning {
+  background: var(--success-muted);
+}
+
+#leaderboard-table tr.winning td:first-child {
+  color: var(--success);
+  font-weight: 600;
+}
+
+#leaderboard-table tr.you {
+  background: var(--accent-muted);
+}
+
+#leaderboard-table tr.you td {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+#leaderboard-table tr.winning.you {
+  background: linear-gradient(135deg, var(--success-muted), var(--accent-muted));
+}
+
+/* ==================== */
+/* CREATE AUCTION FORM */
+/* ==================== */
+#create-auction-section {
+  padding-bottom: 32px;
+}
+
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+textarea {
+  min-height: 80px;
+  resize: vertical;
+}
+
+/* Rounds config */
+#rounds-config {
+  margin-bottom: 12px;
+}
+
+.round-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 12px;
+  background: var(--bg-input);
+  border-radius: var(--border-radius-sm);
+  flex-wrap: wrap;
+}
+
+.round-row span {
+  font-size: 13px;
+  color: var(--text-secondary);
+  min-width: 70px;
+}
+
+.round-row input {
+  width: 70px;
+  padding: 10px 12px;
+  text-align: center;
+}
+
+/* ==================== */
+/* NOTIFICATIONS */
+/* ==================== */
+.notifications {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 1000;
+  width: calc(100% - 32px);
+  max-width: 400px;
+  pointer-events: none;
+}
+
+.toast {
+  padding: 14px 20px;
+  border-radius: var(--border-radius);
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-lg);
+  animation: toastIn 0.3s ease;
+  text-align: center;
+  font-size: 14px;
+  pointer-events: auto;
+}
+
+.toast.success {
+  border-color: var(--success);
+  background: var(--success-muted);
+  color: var(--success);
+}
+
+.toast.warning {
+  border-color: var(--warning);
+  background: rgba(255, 152, 0, 0.15);
+  color: var(--warning);
+}
+
+.toast.error {
+  border-color: var(--danger);
+  background: var(--danger-muted);
+  color: var(--danger);
+}
+
+.toast.fade-out {
+  animation: toastOut 0.3s ease forwards;
+}
+
+@keyframes toastIn {
+  from { 
+    transform: translateY(20px); 
+    opacity: 0; 
+  }
+  to { 
+    transform: translateY(0); 
+    opacity: 1; 
+  }
+}
+
+@keyframes toastOut {
+  from { 
+    transform: translateY(0); 
+    opacity: 1; 
+  }
+  to { 
+    transform: translateY(20px); 
+    opacity: 0; 
+  }
+}
+
+/* Empty state */
+.empty-state {
+  text-align: center;
+  color: var(--text-hint);
+  padding: 40px 20px;
+  font-size: 14px;
+}
+
+/* ==================== */
+/* RESPONSIVE */
+/* ==================== */
+@media (min-width: 600px) {
+  .container {
+    max-width: 600px;
+  }
+}
+
+@media (max-width: 400px) {
+  .auction-stats {
+    grid-template-columns: 1fr;
+  }
+  
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+  
+  .bid-form {
+    flex-direction: column;
+  }
+  
+  .round-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .round-row input {
+    width: 100%;
+  }
+}
+
+/* ==================== */
+/* SCROLLBAR */
+/* ==================== */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-primary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}

@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0f0f0f">
+  <title data-i18n="app.title">Аукцион</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>⭐ <span data-i18n="app.title">Аукцион</span></h1>
+      <div class="header-controls">
+        <select id="lang-select" class="lang-select">
+          <option value="ru">🇷🇺 RU</option>
+          <option value="en">🇬🇧 EN</option>
+        </select>
+      </div>
+    </header>
+
+    <main>
+      <!-- Форма входа -->
+      <section id="auth-section" class="card hidden">
+        <h2 data-i18n="auth.title">Вход в аукцион</h2>
+        <form id="login-form">
+          <input 
+            type="text" 
+            id="login-username" 
+            data-i18n-placeholder="auth.username_placeholder"
+            placeholder="Введите имя" 
+            required 
+            minlength="3" 
+            maxlength="32"
+            autocomplete="username"
+          >
+          <button type="submit" class="btn-success" data-i18n="auth.login">Войти</button>
+        </form>
+      </section>
+
+      <!-- Панель пользователя -->
+      <section id="user-panel" class="card hidden">
+        <div class="user-header">
+          <div class="user-info">
+            <span id="user-name">—</span>
+          </div>
+          <button id="logout-btn" class="btn-small btn-secondary" data-i18n="auth.logout">Выйти</button>
+        </div>
+        
+        <h3 data-i18n="balance.title">Ваш баланс</h3>
+        <div class="balance-info">
+          <div class="balance-row">
+            <span data-i18n="balance.total">Всего:</span>
+            <span id="balance-total">0 ⭐</span>
+          </div>
+          <div class="balance-row">
+            <span data-i18n="balance.locked">Заблокировано:</span>
+            <span id="balance-locked">0 ⭐</span>
+          </div>
+          <div class="balance-row available">
+            <span data-i18n="balance.available">Доступно:</span>
+            <span id="balance-available">0 ⭐</span>
+          </div>
+        </div>
+        
+        <div class="deposit-form">
+          <input type="number" id="deposit-amount" data-i18n-placeholder="balance.enter_amount" placeholder="Сумма" min="1">
+          <button id="deposit-btn" class="btn-success" data-i18n="balance.deposit">Пополнить</button>
+        </div>
+      </section>
+
+      <!-- Список аукционов -->
+      <section id="auctions-section" class="card hidden">
+        <div class="section-header">
+          <h2 data-i18n="auctions.title">Аукционы</h2>
+          <button id="create-auction-btn" class="btn-small" data-i18n="auctions.create">+ Создать</button>
+        </div>
+        <div id="auctions-list" class="auctions-grid">
+          <p class="empty-state" data-i18n="common.loading">Загрузка...</p>
+        </div>
+      </section>
+
+      <!-- Детали аукциона -->
+      <section id="auction-detail" class="card hidden">
+        <button id="back-btn" class="btn-link" data-i18n="common.back">← Назад к аукционам</button>
+        
+        <div class="auction-header">
+          <h2 id="auction-name">—</h2>
+          <span id="auction-status" class="status-badge">—</span>
+        </div>
+        
+        <p id="auction-description" class="auction-description"></p>
+        
+        <div class="auction-stats">
+          <div class="stat">
+            <span class="stat-label" data-i18n="auction.round">Раунд</span>
+            <span id="auction-round" class="stat-value">—</span>
+          </div>
+          <div class="stat">
+            <span class="stat-label" data-i18n="auction.items_left">Осталось</span>
+            <span id="auction-items" class="stat-value">—</span>
+          </div>
+          <div class="stat">
+            <span class="stat-label" data-i18n="auction.time_remaining">Время</span>
+            <span id="auction-time" class="stat-value">—</span>
+          </div>
+        </div>
+        
+        <div class="bid-section">
+          <div class="current-bid-info">
+            <span data-i18n="auction.min_winning_bid">Мин. победная ставка:</span>
+            <span id="min-winning-bid">—</span>
+          </div>
+          <div class="your-bid-info">
+            <span data-i18n="auction.your_bid">Ваша ставка:</span>
+            <span id="your-bid">—</span>
+          </div>
+          <div class="your-position-info">
+            <span data-i18n="auction.your_position">Ваша позиция:</span>
+            <span id="your-position">—</span>
+          </div>
+          
+          <div class="bid-form">
+            <input type="number" id="bid-amount" data-i18n-placeholder="auction.enter_bid" placeholder="Введите сумму ставки" min="1">
+            <button id="place-bid-btn" class="btn-success" data-i18n="auction.place_bid">Сделать ставку</button>
+          </div>
+        </div>
+        
+        <div class="leaderboard">
+          <div class="leaderboard-header">
+            <h3 data-i18n="leaderboard.title">📊 Таблица лидеров</h3>
+            <button id="refresh-leaderboard-btn" class="btn-small btn-secondary" data-i18n="leaderboard.refresh">↻ Обновить</button>
+          </div>
+          <table id="leaderboard-table">
+            <thead>
+              <tr>
+                <th data-i18n="leaderboard.position">#</th>
+                <th data-i18n="leaderboard.user">Пользователь</th>
+                <th data-i18n="leaderboard.amount">Ставка</th>
+              </tr>
+            </thead>
+            <tbody id="leaderboard-body">
+              <tr><td colspan="3" class="empty-state" data-i18n="leaderboard.no_bids">Ставок пока нет</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Форма создания аукциона -->
+      <section id="create-auction-section" class="card hidden">
+        <button id="cancel-create-btn" class="btn-link" data-i18n="common.back">← Назад к аукционам</button>
+        
+        <h2 data-i18n="create.title">Создать аукцион</h2>
+        
+        <form id="create-auction-form">
+          <div class="form-group">
+            <label data-i18n="create.name">Название</label>
+            <input type="text" id="auction-title" data-i18n-placeholder="create.name_placeholder" placeholder="Введите название аукциона" required>
+          </div>
+          
+          <div class="form-group">
+            <label data-i18n="create.description">Описание</label>
+            <textarea id="auction-desc" data-i18n-placeholder="create.description_placeholder" placeholder="Описание аукциона (необязательно)"></textarea>
+          </div>
+          
+          <div class="form-row">
+            <div class="form-group">
+              <label data-i18n="create.total_items">Всего товаров</label>
+              <input type="number" id="total-items" value="10" min="1" required>
+            </div>
+            <div class="form-group">
+              <label data-i18n="create.starting_price">Начальная цена</label>
+              <input type="number" id="starting-price" value="100" min="1" required>
+            </div>
+          </div>
+          
+          <div class="form-group">
+            <label data-i18n="create.rounds">Конфигурация раундов</label>
+            <div id="rounds-config">
+              <div class="round-row">
+                <span data-i18n="create.round_items">Товаров</span>
+                <input type="number" class="round-items" value="3" min="1">
+                <span data-i18n="create.round_duration">Сек</span>
+                <input type="number" class="round-duration" value="120" min="30">
+              </div>
+              <div class="round-row">
+                <span data-i18n="create.round_items">Товаров</span>
+                <input type="number" class="round-items" value="3" min="1">
+                <span data-i18n="create.round_duration">Сек</span>
+                <input type="number" class="round-duration" value="90" min="30">
+              </div>
+              <div class="round-row">
+                <span data-i18n="create.round_items">Товаров</span>
+                <input type="number" class="round-items" value="4" min="1">
+                <span data-i18n="create.round_duration">Сек</span>
+                <input type="number" class="round-duration" value="60" min="30">
+              </div>
+            </div>
+            <button type="button" id="add-round-btn" class="btn-small btn-secondary" data-i18n="create.add_round">+ Добавить раунд</button>
+          </div>
+          
+          <button type="submit" class="btn-success" style="width: 100%; margin-top: 8px;" data-i18n="common.create">Создать</button>
+        </form>
+      </section>
+    </main>
+
+    <!-- Уведомления -->
+    <div id="notifications" class="notifications"></div>
+
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/js/i18n.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,680 @@
+// Состояние приложения
+const state = {
+  user: null,
+  currentAuction: null,
+  socket: null,
+  timerInterval: null,
+  leaderboardInterval: null,
+};
+
+// DOM элементы
+const $ = (id) => document.getElementById(id);
+
+const el = {
+  // Секции
+  authSection: $('auth-section'),
+  userPanel: $('user-panel'),
+  auctionsSection: $('auctions-section'),
+  auctionDetail: $('auction-detail'),
+  createAuctionSection: $('create-auction-section'),
+  
+  // Авторизация
+  loginForm: $('login-form'),
+  loginUsername: $('login-username'),
+  logoutBtn: $('logout-btn'),
+  userName: $('user-name'),
+  
+  // Баланс
+  balanceTotal: $('balance-total'),
+  balanceLocked: $('balance-locked'),
+  balanceAvailable: $('balance-available'),
+  depositAmount: $('deposit-amount'),
+  depositBtn: $('deposit-btn'),
+  
+  // Аукционы
+  auctionsList: $('auctions-list'),
+  createAuctionBtn: $('create-auction-btn'),
+  
+  // Детали аукциона
+  backBtn: $('back-btn'),
+  auctionName: $('auction-name'),
+  auctionStatus: $('auction-status'),
+  auctionDescription: $('auction-description'),
+  auctionRound: $('auction-round'),
+  auctionItems: $('auction-items'),
+  auctionTime: $('auction-time'),
+  minWinningBid: $('min-winning-bid'),
+  yourBid: $('your-bid'),
+  yourPosition: $('your-position'),
+  bidAmount: $('bid-amount'),
+  placeBidBtn: $('place-bid-btn'),
+  leaderboardBody: $('leaderboard-body'),
+  refreshLeaderboardBtn: $('refresh-leaderboard-btn'),
+  
+  // Создание
+  cancelCreateBtn: $('cancel-create-btn'),
+  createAuctionForm: $('create-auction-form'),
+  addRoundBtn: $('add-round-btn'),
+  roundsConfig: $('rounds-config'),
+  
+  // Уведомления
+  notifications: $('notifications'),
+  
+  // Язык
+  langSelect: $('lang-select'),
+};
+
+// API клиент
+const api = {
+  async request(endpoint, options = {}) {
+    const config = {
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      ...options,
+    };
+
+    if (config.body && typeof config.body === 'object') {
+      config.body = JSON.stringify(config.body);
+    }
+
+    const response = await fetch(`/api${endpoint}`, config);
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error?.message || t('error.network'));
+    }
+
+    return data;
+  },
+
+  // Auth
+  login: (username, initialBalance = 10000) => 
+    api.request('/auth/login', { method: 'POST', body: { username, initialBalance } }),
+  
+  logout: () => 
+    api.request('/auth/logout', { method: 'POST' }),
+  
+  getMe: () => 
+    api.request('/auth/me'),
+
+  // Users
+  getUserBalance: (userId) => 
+    api.request(`/users/${userId}/balance`),
+  
+  deposit: (userId, amount) => 
+    api.request(`/users/${userId}/deposit`, { method: 'POST', body: { amount } }),
+
+  // Auctions
+  getAuctions: (page = 1, limit = 50) => 
+    api.request(`/auctions?page=${page}&limit=${limit}`),
+  
+  getAuction: (auctionId) => 
+    api.request(`/auctions/${auctionId}`),
+  
+  createAuction: (data) => 
+    api.request('/auctions', { method: 'POST', body: data }),
+  
+  startAuction: (auctionId) => 
+    api.request(`/auctions/${auctionId}/start`, { method: 'POST' }),
+  
+  placeBid: (auctionId, userId, amount) => 
+    api.request(`/auctions/${auctionId}/bid`, { method: 'POST', body: { userId, amount } }),
+  
+  getLeaderboard: (auctionId, limit = 100) => 
+    api.request(`/auctions/${auctionId}/leaderboard?limit=${limit}`),
+  
+  getUserBidStatus: (auctionId, userId) => 
+    api.request(`/auctions/${auctionId}/user/${userId}/status`),
+};
+
+// Уведомления
+function notify(message, type = 'info') {
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+  toast.textContent = message;
+  el.notifications.appendChild(toast);
+  
+  setTimeout(() => {
+    toast.classList.add('fade-out');
+    setTimeout(() => toast.remove(), 300);
+  }, 3000);
+}
+
+// Форматирование времени
+function formatTime(ms) {
+  if (ms <= 0) return '00:00';
+  const totalSeconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+}
+
+// Показать/скрыть секции
+function showSection(section) {
+  [el.authSection, el.userPanel, el.auctionsSection, el.auctionDetail, el.createAuctionSection]
+    .forEach(s => s.classList.add('hidden'));
+  
+  if (state.user) {
+    el.userPanel.classList.remove('hidden');
+  }
+  
+  section.classList.remove('hidden');
+}
+
+// =====================
+// АВТОРИЗАЦИЯ
+// =====================
+
+async function checkAuth() {
+  try {
+    const result = await api.getMe();
+    if (result.data?.user) {
+      state.user = result.data.user;
+      el.userName.textContent = state.user.username;
+      showSection(el.auctionsSection);
+      updateBalance();
+      loadAuctions();
+      initSocket();
+    } else {
+      showSection(el.authSection);
+    }
+  } catch (err) {
+    showSection(el.authSection);
+  }
+}
+
+async function handleLogin(e) {
+  e.preventDefault();
+  const username = el.loginUsername.value.trim();
+  
+  if (username.length < 3) {
+    notify(t('error.invalid_amount'), 'error');
+    return;
+  }
+
+  try {
+    const result = await api.login(username);
+    state.user = result.data.user;
+    el.userName.textContent = state.user.username;
+    el.loginUsername.value = '';
+    
+    showSection(el.auctionsSection);
+    updateBalance();
+    loadAuctions();
+    initSocket();
+    
+    notify(result.data.isNewUser ? t('auth.welcome') : t('auth.welcome_back'), 'success');
+  } catch (err) {
+    notify(err.message, 'error');
+  }
+}
+
+async function handleLogout() {
+  try {
+    await api.logout();
+    
+    if (state.socket) {
+      state.socket.disconnect();
+      state.socket = null;
+    }
+    if (state.timerInterval) {
+      clearInterval(state.timerInterval);
+      state.timerInterval = null;
+    }
+    
+    state.user = null;
+    state.currentAuction = null;
+    
+    showSection(el.authSection);
+    notify(t('auth.logged_out'), 'info');
+  } catch (err) {
+    notify(err.message, 'error');
+  }
+}
+
+// =====================
+// БАЛАНС
+// =====================
+
+async function updateBalance() {
+  if (!state.user) return;
+  
+  try {
+    const result = await api.getUserBalance(state.user.id);
+    const b = result.data;
+    el.balanceTotal.textContent = `${b.balance} ⭐`;
+    el.balanceLocked.textContent = `${b.lockedBalance} ⭐`;
+    el.balanceAvailable.textContent = `${b.availableBalance} ⭐`;
+  } catch (err) {
+    console.error('Balance update error:', err);
+  }
+}
+
+async function handleDeposit() {
+  const amount = parseInt(el.depositAmount.value);
+  
+  if (!amount || amount <= 0) {
+    notify(t('error.invalid_amount'), 'error');
+    return;
+  }
+
+  try {
+    await api.deposit(state.user.id, amount);
+    el.depositAmount.value = '';
+    await updateBalance();
+    notify(t('balance.deposited', { amount }), 'success');
+  } catch (err) {
+    notify(err.message, 'error');
+  }
+}
+
+// =====================
+// АУКЦИОНЫ
+// =====================
+
+async function loadAuctions() {
+  try {
+    const result = await api.getAuctions();
+    renderAuctionsList(result.data);
+  } catch (err) {
+    el.auctionsList.innerHTML = `<p class="empty-state">${t('common.error')}</p>`;
+  }
+}
+
+function renderAuctionsList(auctions) {
+  if (!auctions || !auctions.length) {
+    el.auctionsList.innerHTML = `<p class="empty-state">${t('auctions.no_auctions')}</p>`;
+    return;
+  }
+
+  el.auctionsList.innerHTML = auctions.map(a => `
+    <div class="auction-card" data-id="${a.id}">
+      <div class="auction-card-header">
+        <h3>${escapeHtml(a.title)}</h3>
+        <span class="status-badge ${a.status}">${t('status.' + a.status)}</span>
+      </div>
+      <div class="auction-card-stats">
+        <span>${t('auctions.distributed')} ${a.distributedItems}/${a.totalItems}</span>
+        <span>${t('auctions.round')} ${a.currentRound + 1}/${a.rounds.length}</span>
+        <span>${t('auctions.starting_price')} ${a.startingPrice} ⭐</span>
+      </div>
+    </div>
+  `).join('');
+
+  el.auctionsList.querySelectorAll('.auction-card').forEach(card => {
+    card.addEventListener('click', () => openAuction(card.dataset.id));
+  });
+}
+
+async function openAuction(auctionId) {
+  try {
+    await loadAuctionDetail(auctionId);
+    showSection(el.auctionDetail);
+    
+    if (state.socket) {
+      state.socket.emit('auction:join', auctionId);
+    }
+    
+    startTimer();
+    startLeaderboardAutoRefresh();
+  } catch (err) {
+    notify(err.message, 'error');
+  }
+}
+
+async function loadAuctionDetail(auctionId) {
+  const result = await api.getAuction(auctionId);
+  state.currentAuction = result.data;
+  
+  const a = state.currentAuction;
+  const round = a.rounds[a.currentRound];
+  
+  el.auctionName.textContent = a.title;
+  el.auctionDescription.textContent = a.description || '';
+  el.auctionStatus.textContent = t('status.' + a.status);
+  el.auctionStatus.className = `status-badge ${a.status}`;
+  el.auctionRound.textContent = `${a.currentRound + 1} / ${a.rounds.length}`;
+  el.auctionItems.textContent = `${a.totalItems - a.distributedItems} / ${a.totalItems}`;
+  el.minWinningBid.textContent = `${a.minWinningBid || a.startingPrice} ⭐`;
+  
+  if (round) {
+    state.currentAuction.roundEndTime = new Date(round.endTime).getTime();
+  }
+  
+  await loadLeaderboard(auctionId);
+  await loadUserStatus(auctionId);
+}
+
+async function loadLeaderboard(auctionId) {
+  try {
+    const result = await api.getLeaderboard(auctionId, 50);
+    renderLeaderboard(result.data);
+  } catch (err) {
+    el.leaderboardBody.innerHTML = `<tr><td colspan="3">${t('common.error')}</td></tr>`;
+  }
+}
+
+function renderLeaderboard(bids) {
+  if (!bids || !bids.length) {
+    el.leaderboardBody.innerHTML = `<tr><td colspan="3">${t('leaderboard.no_bids')}</td></tr>`;
+    return;
+  }
+
+  const round = state.currentAuction?.rounds[state.currentAuction.currentRound];
+  const itemsInRound = round?.itemsToDistribute || 0;
+
+  el.leaderboardBody.innerHTML = bids.map((bid, i) => {
+    const isWinning = i < itemsInRound;
+    const isYou = state.user && bid.username === state.user.username;
+    const classes = [isWinning ? 'winning' : '', isYou ? 'you' : ''].filter(Boolean).join(' ');
+    
+    return `
+      <tr class="${classes}">
+        <td>${bid.position}</td>
+        <td>${escapeHtml(bid.username)}${isYou ? ' ' + t('leaderboard.you') : ''}</td>
+        <td>${bid.amount} ⭐</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+async function loadUserStatus(auctionId) {
+  if (!state.user) return;
+
+  try {
+    const result = await api.getUserBidStatus(auctionId, state.user.id);
+    const s = result.data;
+
+    if (s.hasBid) {
+      el.yourBid.textContent = `${s.bid.amount} ⭐`;
+      el.yourPosition.textContent = `#${s.position} / ${s.totalBidders}`;
+    } else {
+      el.yourBid.textContent = t('auction.not_placed');
+      el.yourPosition.textContent = '—';
+    }
+  } catch (err) {
+    console.error('Status load error:', err);
+  }
+}
+
+function startTimer() {
+  if (state.timerInterval) clearInterval(state.timerInterval);
+
+  state.timerInterval = setInterval(() => {
+    if (!state.currentAuction || state.currentAuction.status !== 'active') {
+      el.auctionTime.textContent = '—';
+      return;
+    }
+
+    const remaining = state.currentAuction.roundEndTime - Date.now();
+    el.auctionTime.textContent = formatTime(remaining);
+
+    if (remaining <= 0) {
+      loadAuctionDetail(state.currentAuction.id);
+    }
+  }, 1000);
+}
+
+function startLeaderboardAutoRefresh() {
+  stopLeaderboardAutoRefresh();
+  
+  // Автообновление каждые 5 секунд
+  state.leaderboardInterval = setInterval(async () => {
+    if (state.currentAuction && state.currentAuction.status === 'active') {
+      await loadLeaderboard(state.currentAuction.id);
+      await loadUserStatus(state.currentAuction.id);
+    }
+  }, 5000);
+}
+
+function stopLeaderboardAutoRefresh() {
+  if (state.leaderboardInterval) {
+    clearInterval(state.leaderboardInterval);
+    state.leaderboardInterval = null;
+  }
+}
+
+async function refreshLeaderboard() {
+  if (!state.currentAuction) return;
+  
+  el.refreshLeaderboardBtn.disabled = true;
+  el.refreshLeaderboardBtn.textContent = '...';
+  
+  try {
+    await loadLeaderboard(state.currentAuction.id);
+    await loadUserStatus(state.currentAuction.id);
+  } finally {
+    el.refreshLeaderboardBtn.disabled = false;
+    el.refreshLeaderboardBtn.textContent = t('leaderboard.refresh');
+  }
+}
+
+async function handlePlaceBid() {
+  const amount = parseInt(el.bidAmount.value);
+  
+  if (!amount || amount <= 0) {
+    notify(t('error.invalid_amount'), 'error');
+    return;
+  }
+
+  try {
+    el.placeBidBtn.disabled = true;
+    const result = await api.placeBid(state.currentAuction.id, state.user.id, amount);
+    
+    el.bidAmount.value = '';
+    await updateBalance();
+    await loadUserStatus(state.currentAuction.id);
+    await loadLeaderboard(state.currentAuction.id);
+
+    const msg = result.data.isNewBid
+      ? t('auction.bid_placed', { amount })
+      : t('auction.bid_raised', { amount });
+    
+    notify(result.data.roundExtended ? msg + t('auction.time_extended') : msg, 'success');
+  } catch (err) {
+    notify(err.message, 'error');
+  } finally {
+    el.placeBidBtn.disabled = false;
+  }
+}
+
+function backToList() {
+  if (state.socket && state.currentAuction) {
+    state.socket.emit('auction:leave', state.currentAuction.id);
+  }
+  if (state.timerInterval) {
+    clearInterval(state.timerInterval);
+    state.timerInterval = null;
+  }
+  stopLeaderboardAutoRefresh();
+  
+  state.currentAuction = null;
+  showSection(el.auctionsSection);
+  loadAuctions();
+  updateBalance();
+}
+
+// =====================
+// СОЗДАНИЕ АУКЦИОНА
+// =====================
+
+function openCreateForm() {
+  showSection(el.createAuctionSection);
+}
+
+function addRoundRow() {
+  const row = document.createElement('div');
+  row.className = 'round-row';
+  row.innerHTML = `
+    <span>${t('create.round_items')}</span>
+    <input type="number" class="round-items" value="3" min="1">
+    <span>${t('create.round_duration')}</span>
+    <input type="number" class="round-duration" value="60" min="30">
+    <button type="button" class="btn-remove" onclick="this.parentElement.remove()">${t('create.remove_round')}</button>
+  `;
+  el.roundsConfig.appendChild(row);
+}
+
+async function handleCreateAuction(e) {
+  e.preventDefault();
+
+  const roundItems = el.roundsConfig.querySelectorAll('.round-items');
+  const roundDurations = el.roundsConfig.querySelectorAll('.round-duration');
+  
+  const roundsConfig = [];
+  roundItems.forEach((input, i) => {
+    const items = parseInt(input.value);
+    const duration = parseInt(roundDurations[i].value) * 1000;
+    if (items > 0 && duration > 0) {
+      roundsConfig.push({ itemsToDistribute: items, durationMs: duration });
+    }
+  });
+
+  const totalItems = parseInt($('total-items').value);
+  const roundsSum = roundsConfig.reduce((sum, r) => sum + r.itemsToDistribute, 0);
+
+  if (roundsSum !== totalItems) {
+    notify(t('create.items_mismatch', { sum: roundsSum, total: totalItems }), 'error');
+    return;
+  }
+
+  const data = {
+    title: $('auction-title').value,
+    description: $('auction-desc').value,
+    totalItems,
+    startingPrice: parseInt($('starting-price').value),
+    roundsConfig,
+    startTime: new Date().toISOString(),
+    createdBy: state.user.id,
+  };
+
+  try {
+    const result = await api.createAuction(data);
+    await api.startAuction(result.data.id);
+    
+    showSection(el.auctionsSection);
+    loadAuctions();
+    notify(t('create.success'), 'success');
+  } catch (err) {
+    notify(err.message || t('create.error'), 'error');
+  }
+}
+
+// =====================
+// WEBSOCKET
+// =====================
+
+function initSocket() {
+  state.socket = io({ transports: ['websocket', 'polling'] });
+
+  state.socket.on('connect', () => console.log('WS connected'));
+  state.socket.on('disconnect', () => console.log('WS disconnected'));
+
+  state.socket.on('auction:event', (event) => {
+    if (state.currentAuction && event.auctionId === state.currentAuction.id) {
+      handleAuctionEvent(event);
+    }
+    loadAuctions();
+  });
+
+  state.socket.on('auction:new_bid', (data) => {
+    if (state.currentAuction && data.auctionId === state.currentAuction.id) {
+      el.minWinningBid.textContent = `${data.minWinningBid} ⭐`;
+      loadLeaderboard(data.auctionId);
+      loadUserStatus(data.auctionId);
+    }
+  });
+
+  state.socket.on('auction:time_extended', (data) => {
+    if (state.currentAuction && data.auctionId === state.currentAuction.id) {
+      notify(t('event.round_ending') + t('auction.time_extended'), 'info');
+      state.currentAuction.roundEndTime = new Date(data.newEndTime).getTime();
+    }
+  });
+}
+
+function handleAuctionEvent(event) {
+  switch (event.type) {
+    case 'round_started':
+      notify(t('event.round_started', { n: event.roundNumber + 1 }), 'success');
+      loadAuctionDetail(state.currentAuction.id);
+      break;
+    case 'round_ending_soon':
+      notify(t('event.round_ending'), 'warning');
+      break;
+    case 'round_ended':
+      notify(t('event.round_ended', { count: event.data?.winnersCount || 0 }), 'info');
+      loadAuctionDetail(state.currentAuction.id);
+      updateBalance();
+      break;
+    case 'auction_completed':
+      notify(t('event.auction_completed'), 'success');
+      loadAuctionDetail(state.currentAuction.id);
+      updateBalance();
+      break;
+  }
+}
+
+// =====================
+// УТИЛИТЫ
+// =====================
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// =====================
+// СМЕНА ЯЗЫКА
+// =====================
+
+async function handleLanguageChange() {
+  const locale = el.langSelect.value;
+  await I18n.setLocale(locale);
+  
+  // Перерисовать динамический контент
+  if (state.currentAuction) {
+    loadAuctionDetail(state.currentAuction.id);
+  } else if (state.user) {
+    loadAuctions();
+  }
+}
+
+// =====================
+// ИНИЦИАЛИЗАЦИЯ
+// =====================
+
+async function init() {
+  // Загрузить переводы из API
+  await I18n.init();
+  
+  // Установить значение селектора языка
+  el.langSelect.value = I18n.currentLocale;
+  
+  // Слушатели
+  el.loginForm.addEventListener('submit', handleLogin);
+  el.logoutBtn.addEventListener('click', handleLogout);
+  el.depositBtn.addEventListener('click', handleDeposit);
+  el.createAuctionBtn.addEventListener('click', openCreateForm);
+  el.cancelCreateBtn.addEventListener('click', backToList);
+  el.backBtn.addEventListener('click', backToList);
+  el.placeBidBtn.addEventListener('click', handlePlaceBid);
+  el.refreshLeaderboardBtn.addEventListener('click', refreshLeaderboard);
+  el.addRoundBtn.addEventListener('click', addRoundRow);
+  el.createAuctionForm.addEventListener('submit', handleCreateAuction);
+  el.langSelect.addEventListener('change', handleLanguageChange);
+  
+  el.bidAmount.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') handlePlaceBid();
+  });
+  
+  el.depositAmount.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') handleDeposit();
+  });
+  
+  // Проверить авторизацию
+  await checkAuth();
+}
+
+init();
