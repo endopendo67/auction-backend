@@ -72,8 +72,6 @@ const el = {
   addRoundBtn: $('add-round-btn'),
   roundsConfig: $('rounds-config'),
   enableBotSimulation: $('enable-bot-simulation'),
-  botOptions: $('bot-options'),
-  botCount: $('bot-count'),
   
   // История
   historyBtn: $('history-btn'),
@@ -838,9 +836,9 @@ async function handleCreateAuction(e) {
     return;
   }
 
-  // Опции симуляции ботов
+  // Опции симуляции ботов (количество = 3x товаров)
   const enableBotSimulation = el.enableBotSimulation?.checked || false;
-  const botCount = parseInt(el.botCount?.value) || 5;
+  const botCount = Math.max(5, totalItems * 3); // Минимум 5, или 3x от товаров
 
   const data = {
     title: $('auction-title').value,
@@ -865,7 +863,7 @@ async function handleCreateAuction(e) {
     loadAuctions();
     
     if (enableBotSimulation) {
-      notify(t('create.success') + ` 🤖 ${botCount} ботов запущено!`, 'success');
+      notify(t('create.success') + ' Боты активированы!', 'success');
     } else {
       notify(t('create.success'), 'success');
     }
@@ -1036,13 +1034,6 @@ async function init() {
   el.addRoundBtn?.addEventListener('click', addRoundRow);
   el.createAuctionForm?.addEventListener('submit', handleCreateAuction);
   el.langSelect?.addEventListener('change', handleLanguageChange);
-  
-  // Переключатель симуляции ботов
-  el.enableBotSimulation?.addEventListener('change', () => {
-    if (el.botOptions) {
-      el.botOptions.classList.toggle('hidden', !el.enableBotSimulation.checked);
-    }
-  });
   
   el.bidAmount?.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') handlePlaceBid();

@@ -29,10 +29,12 @@ interface AuctionSimulation {
 }
 
 const BOT_NAMES = [
-  '🤖 Alpha', '🤖 Beta', '🤖 Gamma', '🤖 Delta', '🤖 Epsilon',
-  '🤖 Zeta', '🤖 Eta', '🤖 Theta', '🤖 Iota', '🤖 Kappa',
-  '🤖 Lambda', '🤖 Mu', '🤖 Nu', '🤖 Xi', '🤖 Omicron',
-  '🤖 Pi', '🤖 Rho', '🤖 Sigma', '🤖 Tau', '🤖 Upsilon',
+  'Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon',
+  'Zeta', 'Eta', 'Theta', 'Iota', 'Kappa',
+  'Lambda', 'Mu', 'Nu', 'Xi', 'Omicron',
+  'Pi', 'Rho', 'Sigma', 'Tau', 'Upsilon',
+  'Phoenix', 'Nova', 'Orion', 'Vega', 'Atlas',
+  'Titan', 'Nexus', 'Pulse', 'Storm', 'Blaze',
 ];
 
 const BOT_PERSONALITIES = ['aggressive', 'cautious', 'sniper', 'random'] as const;
@@ -142,51 +144,51 @@ class BotSimulatorService {
   }
 
   /**
-   * Генерация конфига бота по личности
+   * Генерация конфига бота по личности (АГРЕССИВНЫЕ настройки)
    */
   private generateBotConfig(name: string, personality: BotPersonality, startingPrice: number): BotConfig {
     const base = {
       name,
-      balance: 50000,
-      maxBid: startingPrice * 100,
-      bidMultiplier: 1.0,
-      snipeChance: 0.3,
-      thinkTimeMs: 3000,
+      balance: 100000,
+      maxBid: startingPrice * 200,
+      bidMultiplier: 2.0,
+      snipeChance: 0.5,
+      thinkTimeMs: 800, // Быстрее думают
     };
 
     switch (personality) {
       case 'aggressive':
         return {
           ...base,
-          bidMultiplier: 1.5,
-          maxBid: startingPrice * 150,
-          thinkTimeMs: 1500,
-          snipeChance: 0.2,
+          bidMultiplier: 3.0,
+          maxBid: startingPrice * 300,
+          thinkTimeMs: 500, // Очень быстрый
+          snipeChance: 0.4,
         };
       case 'cautious':
         return {
           ...base,
-          bidMultiplier: 1.1,
-          maxBid: startingPrice * 50,
-          thinkTimeMs: 5000,
-          snipeChance: 0.1,
+          bidMultiplier: 1.5,
+          maxBid: startingPrice * 100,
+          thinkTimeMs: 1500,
+          snipeChance: 0.3,
         };
       case 'sniper':
         return {
           ...base,
-          bidMultiplier: 1.2,
-          maxBid: startingPrice * 80,
-          thinkTimeMs: 8000,
-          snipeChance: 0.8,
+          bidMultiplier: 2.0,
+          maxBid: startingPrice * 150,
+          thinkTimeMs: 2000,
+          snipeChance: 0.9, // Почти всегда снайпит
         };
       case 'random':
       default:
         return {
           ...base,
-          bidMultiplier: 1 + Math.random() * 0.5,
-          maxBid: startingPrice * (30 + Math.random() * 70),
-          thinkTimeMs: 2000 + Math.random() * 6000,
-          snipeChance: Math.random() * 0.5,
+          bidMultiplier: 1.5 + Math.random() * 1.5,
+          maxBid: startingPrice * (80 + Math.random() * 120),
+          thinkTimeMs: 600 + Math.random() * 1500,
+          snipeChance: 0.3 + Math.random() * 0.4,
         };
     }
   }
@@ -228,15 +230,15 @@ class BotSimulatorService {
         logger.error('Ошибка в симуляции', { error: err, auctionId: simulation.auctionId });
       }
 
-      // Следующий тик через случайный интервал
+      // Следующий тик через случайный интервал (БЫСТРЕЕ)
       if (simulation.isRunning) {
-        const delay = 1000 + Math.random() * 3000; // 1-4 секунды
+        const delay = 300 + Math.random() * 700; // 0.3-1 секунда
         setTimeout(tick, delay);
       }
     };
 
-    // Первый тик через 2 секунды
-    setTimeout(tick, 2000);
+    // Первый тик через 1 секунду
+    setTimeout(tick, 1000);
   }
 
   /**
@@ -301,9 +303,9 @@ class BotSimulatorService {
         const increment = minIncrement + Math.floor(Math.random() * minIncrement * bot.config.bidMultiplier);
         newAmount = topBid + increment;
       } else {
-        // Уже лидер — возможно, повысим ставку
-        if (Math.random() > 0.7) return; // 30% шанс пропустить если уже лидер
-        newAmount = currentBid + minIncrement;
+        // Уже лидер — всё равно иногда повышаем для конкуренции
+        if (Math.random() > 0.5) return; // 50% шанс пропустить если уже лидер
+        newAmount = currentBid + minIncrement * (1 + Math.floor(Math.random() * 3));
       }
 
       // Проверяем лимит

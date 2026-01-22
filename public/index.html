@@ -244,15 +244,11 @@
           </div>
           
           <div class="form-group bot-simulation">
-            <label class="checkbox-label">
+            <label class="checkbox-label bot-toggle">
               <input type="checkbox" id="enable-bot-simulation">
-              <span data-i18n="create.enable_bots">🤖 Симуляция с ботами</span>
+              <span class="bot-toggle-text" data-i18n="create.enable_bots">Тестовый режим с ботами</span>
             </label>
-            <div id="bot-options" class="bot-options hidden">
-              <label data-i18n="create.bot_count">Количество ботов:</label>
-              <input type="number" id="bot-count" value="5" min="2" max="20">
-              <small data-i18n="create.bot_hint">Боты будут ставить, перебивать и снайпить (макс 2 раза)</small>
-            </div>
+            <small class="bot-hint" data-i18n="create.bot_hint">Виртуальные участники будут активно конкурировать за товары</small>
           </div>
           
           <button type="submit" class="btn-success" style="width: 100%; margin-top: 8px;" data-i18n="common.create">Создать</button>

@@ -87,9 +87,8 @@ export const ru = {
   'create.items_mismatch': 'Сумма товаров по раундам ({sum}) должна равняться общему количеству ({total})',
   'create.success': 'Аукцион создан и запущен!',
   'create.error': 'Ошибка при создании аукциона',
-  'create.enable_bots': '🤖 Симуляция с ботами',
-  'create.bot_count': 'Количество ботов:',
-  'create.bot_hint': 'Боты будут ставить, перебивать и снайпить (макс 2 раза)',
+  'create.enable_bots': 'Тестовый режим с ботами',
+  'create.bot_hint': 'Виртуальные участники будут активно конкурировать за товары',
   
   'event.round_started': 'Раунд {n} начался!',
   'event.round_ending': 'Раунд скоро завершится!',
