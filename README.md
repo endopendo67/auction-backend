@@ -1,5 +1,7 @@
 # Auction Backend
 
+> Проект для конкурса [CryptoBot Backend Challenge](https://t.me/CryptoBotRU)
+
 Бэкенд аукционной системы по типу Telegram Gift Auctions.
 
 🌐 **Live-демо:** [auction-demo.lol](https://auction-demo.lol)
