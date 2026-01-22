@@ -151,7 +151,7 @@ npm run dev
 
 - **Атомарные операции** — проверка и обновление в одном запросе
 - **MongoDB транзакции** — snapshot isolation
-- **Retry с backoff** — до 5 попыток при WriteConflict
+- **Retry с backoff** — до 10 попыток при WriteConflict (настраивается)
 - **Аудит** — все операции в коллекции Transaction
 
 ---
@@ -161,12 +161,12 @@ npm run dev
 | Случай | Решение |
 |--------|---------|
 | Ставка на границе времени | Буфер 100мс |
-| Спам ставками | Rate limit 10/5сек (Redis) |
+| Спам ставками | Rate limit (настраивается, по умолчанию OFF) |
 | Нет участников | Раунд завершается пустым |
 | Участников < товаров | Все выигрывают |
 | Равные ставки | Кто раньше (createdAt index) |
 | Сумма > 1 млрд | Отклоняем |
-| WriteConflict | Retry до 5 раз с backoff |
+| WriteConflict | Retry до 10 раз с exponential backoff |
 | Сервер рестарт | Recovery восстанавливает таймеры |
 
 ---
@@ -190,15 +190,18 @@ npx tsx scripts/load-test.ts --bots=100   # нагрузочный тест
 npm run test:stress                       # стресс-тест 5000+ ботов
 ```
 
-### Результаты stress-test (5000 ботов)
+### Результаты stress-test
 
 | Метрика | Значение |
 |---------|----------|
-| Пиковый RPS | ~200 req/s |
-| Latency P50 | 45ms |
-| Latency P95 | 180ms |
-| Success rate | 95%+ |
+| Пиковый RPS | 300+ req/s |
+| Latency P50 | ~40ms |
+| Latency P95 | ~150ms |
+| Success rate | 100% (без rate limit) |
 | Баланс сходится | ✅ |
+
+> Rate limiting по умолчанию отключен для максимальной производительности.
+> Включите `BID_RATE_LIMIT_REQUESTS=10` для защиты от спама в продакшене.
 
 ---
 
@@ -259,13 +262,15 @@ scripts/
 
 ## Конфиг
 
-| Переменная | Default |
-|------------|---------|
-| PORT | 3000 |
-| MONGODB_URI | mongodb://localhost:27017/auction_db |
-| REDIS_URI | redis://localhost:6379 |
-| ANTI_SNIPE_THRESHOLD_MS | 30000 |
-| ANTI_SNIPE_EXTENSION_MS | 60000 |
+| Переменная | Default | Описание |
+|------------|---------|----------|
+| PORT | 3000 | Порт сервера |
+| MONGODB_URI | mongodb://localhost:27017/auction_db | MongoDB connection |
+| REDIS_URI | redis://localhost:6379 | Redis (опционально) |
+| ANTI_SNIPE_THRESHOLD_MS | 30000 | Окно anti-sniping (30 сек) |
+| ANTI_SNIPE_EXTENSION_MS | 60000 | Продление раунда (60 сек) |
+| BID_RATE_LIMIT_REQUESTS | 0 | Rate limit (0 = OFF) |
+| BID_MAX_RETRY_ATTEMPTS | 10 | Retry при WriteConflict |
 
 ---
 

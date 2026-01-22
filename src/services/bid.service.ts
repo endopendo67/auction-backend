@@ -24,39 +24,40 @@ export interface PlaceBidResult {
  * Вся логика размещения ставок с гарантией конкурентности через транзакции.
  */
 export class BidService {
-  // Максимальное кол-во попыток при конфликте транзакций
-  private readonly MAX_RETRY_ATTEMPTS = 5; // увеличено для высокой нагрузки
-
   /**
    * Размещение или повышение ставки с повтором при конфликте.
-   * Включает rate limiting для защиты от спама.
+   * Rate limiting настраивается через BID_RATE_LIMIT_REQUESTS (0 = отключено).
    */
   async placeBid(
     auctionId: Types.ObjectId,
     userId: Types.ObjectId,
     amount: number
   ): Promise<PlaceBidResult> {
-    // EDGE CASE: Rate limiting — макс 10 ставок в 5 секунд от одного пользователя
-    const rateLimit = await redisService.checkRateLimit(
-      `bid:${userId}`,
-      10, // max requests
-      5   // window seconds
-    );
-    
-    if (!rateLimit.allowed) {
-      throw new Error('Слишком много запросов. Подождите немного');
+    // Rate limiting — настраивается через конфиг (0 = отключено)
+    const { rateLimitRequests, rateLimitWindowSec } = config.bid;
+    if (rateLimitRequests > 0) {
+      const rateLimit = await redisService.checkRateLimit(
+        `bid:${userId}`,
+        rateLimitRequests,
+        rateLimitWindowSec
+      );
+      
+      if (!rateLimit.allowed) {
+        throw new Error('Слишком много запросов. Подождите немного');
+      }
     }
 
     let lastError: Error | null = null;
+    const maxRetries = config.bid.maxRetryAttempts;
 
-    for (let attempt = 0; attempt < this.MAX_RETRY_ATTEMPTS; attempt++) {
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
         return await this.placeBidInternal(auctionId, userId, amount);
       } catch (err: any) {
-        // WriteConflict - повторяем
+        // WriteConflict - повторяем с экспоненциальным backoff
         if (err.code === 112 || err.message?.includes('WriteConflict')) {
           lastError = err;
-          const delay = Math.pow(2, attempt) * 50 + Math.random() * 50;
+          const delay = Math.pow(2, attempt) * 30 + Math.random() * 30;
           await new Promise(r => setTimeout(r, delay));
           continue;
         }

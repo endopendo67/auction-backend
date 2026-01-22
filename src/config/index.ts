@@ -24,6 +24,14 @@ export const config = {
     minBidIncrement: parseInt(process.env.MIN_BID_INCREMENT || '10', 10),
   },
   
+  bid: {
+    // Rate limiting: 0 = отключено
+    rateLimitRequests: parseInt(process.env.BID_RATE_LIMIT_REQUESTS || '0', 10),
+    rateLimitWindowSec: parseInt(process.env.BID_RATE_LIMIT_WINDOW_SEC || '5', 10),
+    // Retry при WriteConflict
+    maxRetryAttempts: parseInt(process.env.BID_MAX_RETRY_ATTEMPTS || '10', 10),
+  },
+  
   logging: {
     level: process.env.LOG_LEVEL || 'debug',
   },
