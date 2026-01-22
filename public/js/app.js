@@ -895,42 +895,48 @@ async function handleLanguageChange() {
 // =====================
 
 async function init() {
-  // Загрузить переводы из API
-  await I18n.init();
-  
-  // Установить значение селектора языка
-  el.langSelect.value = I18n.currentLocale;
+  try {
+    // Загрузить переводы из API
+    await I18n.init();
+    el.langSelect.value = I18n.currentLocale;
+  } catch (err) {
+    console.warn('Не удалось загрузить переводы:', err);
+  }
   
   // Слушатели
-  el.loginForm.addEventListener('submit', handleLogin);
-  el.logoutBtn.addEventListener('click', handleLogout);
-  el.depositBtn.addEventListener('click', handleDeposit);
-  el.historyBtn.addEventListener('click', showHistory);
-  el.historyBackBtn.addEventListener('click', hideHistory);
-  el.historyPrev.addEventListener('click', () => loadHistory(historyPage - 1));
-  el.historyNext.addEventListener('click', () => loadHistory(historyPage + 1));
-  el.auctionsPrev.addEventListener('click', () => loadAuctions(auctionsPage - 1));
-  el.auctionsNext.addEventListener('click', () => loadAuctions(auctionsPage + 1));
-  el.refreshAuctionsBtn.addEventListener('click', refreshAuctions);
-  el.createAuctionBtn.addEventListener('click', openCreateForm);
-  el.cancelCreateBtn.addEventListener('click', backToList);
-  el.backBtn.addEventListener('click', backToList);
-  el.placeBidBtn.addEventListener('click', handlePlaceBid);
-  el.refreshLeaderboardBtn.addEventListener('click', refreshLeaderboard);
-  el.addRoundBtn.addEventListener('click', addRoundRow);
-  el.createAuctionForm.addEventListener('submit', handleCreateAuction);
-  el.langSelect.addEventListener('change', handleLanguageChange);
+  el.loginForm?.addEventListener('submit', handleLogin);
+  el.logoutBtn?.addEventListener('click', handleLogout);
+  el.depositBtn?.addEventListener('click', handleDeposit);
+  el.historyBtn?.addEventListener('click', showHistory);
+  el.historyBackBtn?.addEventListener('click', hideHistory);
+  el.historyPrev?.addEventListener('click', () => loadHistory(historyPage - 1));
+  el.historyNext?.addEventListener('click', () => loadHistory(historyPage + 1));
+  el.auctionsPrev?.addEventListener('click', () => loadAuctions(auctionsPage - 1));
+  el.auctionsNext?.addEventListener('click', () => loadAuctions(auctionsPage + 1));
+  el.refreshAuctionsBtn?.addEventListener('click', refreshAuctions);
+  el.createAuctionBtn?.addEventListener('click', openCreateForm);
+  el.cancelCreateBtn?.addEventListener('click', backToList);
+  el.backBtn?.addEventListener('click', backToList);
+  el.placeBidBtn?.addEventListener('click', handlePlaceBid);
+  el.refreshLeaderboardBtn?.addEventListener('click', refreshLeaderboard);
+  el.addRoundBtn?.addEventListener('click', addRoundRow);
+  el.createAuctionForm?.addEventListener('submit', handleCreateAuction);
+  el.langSelect?.addEventListener('change', handleLanguageChange);
   
-  el.bidAmount.addEventListener('keypress', (e) => {
+  el.bidAmount?.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') handlePlaceBid();
   });
   
-  el.depositAmount.addEventListener('keypress', (e) => {
+  el.depositAmount?.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') handleDeposit();
   });
   
-  // Проверить авторизацию
+  // Проверить авторизацию (показать форму входа если не авторизован)
   await checkAuth();
 }
 
-init();
+init().catch(err => {
+  console.error('Ошибка инициализации:', err);
+  // Показать форму входа если что-то пошло не так
+  el.authSection?.classList.remove('hidden');
+});
