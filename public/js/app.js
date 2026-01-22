@@ -466,7 +466,7 @@ async function loadAuctionDetail(auctionId) {
   const round = a.rounds[a.currentRound];
   if (round) {
     el.auctionRoundItems.textContent = round.itemsToDistribute;
-    el.auctionExtensions.textContent = `${round.extensionCount || 0}/3`;
+    el.auctionExtensions.textContent = round.extensionCount || 0;
     el.extensionsStat.style.display = a.status === 'active' ? '' : 'none';
   }
   
@@ -803,7 +803,7 @@ function initSocket() {
       
       // Обновляем счётчик продлений
       if (data.extensionCount !== undefined) {
-        el.auctionExtensions.textContent = `${data.extensionCount}/3`;
+        el.auctionExtensions.textContent = data.extensionCount;
       }
     }
   });

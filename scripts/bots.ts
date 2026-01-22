@@ -304,6 +304,15 @@ class BotSimulator {
       return; // "Отошёл от компьютера"
     }
 
+    // После 2 продлений боты прекращают снайперить (устали ждать)
+    const extensions = currentRound.extensionCount || 0;
+    if (extensions >= 2 && timeRemaining < SETTINGS.SNIPER_THRESHOLD_MS) {
+      // 80% ботов уходят после 2 продлений в конце раунда
+      if (Math.random() < 0.8) {
+        return;
+      }
+    }
+
     // Снайперы ждут конца раунда
     if (bot.personality === 'sniper' && timeRemaining > SETTINGS.SNIPER_THRESHOLD_MS) {
       if (Math.random() > 0.1) return; // Снайперы почти не ставят раньше
