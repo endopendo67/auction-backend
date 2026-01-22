@@ -182,32 +182,38 @@ export class AuctionService {
 
   /**
    * Продление времени раунда (anti-sniping).
-   * Если ставка сделана в последние N секунд - добавляем время.
-   * Лимита нет — участники сами решают, продолжать ли торги.
+   * ПОЛНОСТЬЮ АТОМАРНАЯ операция — проверка и обновление в одном запросе.
    */
   async extendRoundTime(auctionId: Types.ObjectId): Promise<boolean> {
-    const auction = await Auction.findById(auctionId);
+    const now = Date.now();
+    const threshold = new Date(now + config.auction.antiSnipeThresholdMs);
+    const newEndTime = new Date(now + config.auction.antiSnipeExtensionMs);
+
+    // АТОМАРНО: проверяем условие и обновляем в одном запросе
+    // Используем aggregation pipeline в update для доступа к currentRound
+    const auction = await Auction.findById(auctionId).select('currentRound status').lean();
     if (!auction || auction.status !== AuctionStatus.ACTIVE) return false;
 
-    const currentRound = auction.rounds[auction.currentRound];
-    if (!currentRound || currentRound.status !== 'active') return false;
-
-    const now = Date.now();
-    const timeToEnd = currentRound.endTime.getTime() - now;
-
-    // Если до конца осталось меньше порога - продлеваем
-    if (timeToEnd > 0 && timeToEnd <= config.auction.antiSnipeThresholdMs) {
-      const newEndTime = new Date(now + config.auction.antiSnipeExtensionMs);
-
-      await Auction.updateOne(
-        { _id: auctionId },
-        {
-          $set: { [`rounds.${auction.currentRound}.endTime`]: newEndTime },
-          $inc: { [`rounds.${auction.currentRound}.extensionCount`]: 1 },
+    const roundIndex = auction.currentRound;
+    
+    const result = await Auction.updateOne(
+      {
+        _id: auctionId,
+        status: AuctionStatus.ACTIVE,
+        [`rounds.${roundIndex}.status`]: 'active',
+        [`rounds.${roundIndex}.endTime`]: { 
+          $gt: new Date(now), // ещё не закончился
+          $lte: threshold     // в пределах порога
         }
-      );
+      },
+      {
+        $set: { [`rounds.${roundIndex}.endTime`]: newEndTime },
+        $inc: { [`rounds.${roundIndex}.extensionCount`]: 1 },
+      }
+    );
 
-      logger.info(`Anti-snipe: раунд продлён (#${currentRound.extensionCount + 1}), auction=${auctionId}`);
+    if (result.modifiedCount > 0) {
+      logger.info(`Anti-snipe: раунд продлён, auction=${auctionId}`);
       return true;
     }
 

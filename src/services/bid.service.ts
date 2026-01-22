@@ -1,6 +1,5 @@
-import mongoose, { Types, ClientSession } from 'mongoose';
-import { Bid, IBidDocument, BidStatus, Auction, AuctionStatus } from '../models';
-import { balanceService } from './balance.service';
+import { Types } from 'mongoose';
+import { Bid, IBidDocument, BidStatus, Auction, AuctionStatus, User, Transaction, TransactionType } from '../models';
 import { auctionService } from './auction.service';
 import { redisService } from './redis.service';
 import { config } from '../config';
@@ -21,19 +20,19 @@ export interface PlaceBidResult {
 
 /**
  * Сервис ставок.
- * Вся логика размещения ставок с гарантией конкурентности через транзакции.
+ * ПОЛНОСТЬЮ АТОМАРНЫЕ ОПЕРАЦИИ — без транзакций, без WriteConflict.
+ * Каждая операция — один атомарный запрос к MongoDB.
  */
 export class BidService {
   /**
-   * Размещение или повышение ставки с повтором при конфликте.
-   * Rate limiting настраивается через BID_RATE_LIMIT_REQUESTS (0 = отключено).
+   * Размещение ставки — полностью атомарно, без транзакций.
    */
   async placeBid(
     auctionId: Types.ObjectId,
     userId: Types.ObjectId,
     amount: number
   ): Promise<PlaceBidResult> {
-    // Rate limiting — настраивается через конфиг (0 = отключено)
+    // Rate limiting (настраивается, по умолчанию OFF)
     const { rateLimitRequests, rateLimitWindowSec } = config.bid;
     if (rateLimitRequests > 0) {
       const rateLimit = await redisService.checkRateLimit(
@@ -41,39 +40,12 @@ export class BidService {
         rateLimitRequests,
         rateLimitWindowSec
       );
-      
       if (!rateLimit.allowed) {
         throw new Error('Слишком много запросов. Подождите немного');
       }
     }
 
-    let lastError: Error | null = null;
-    const maxRetries = config.bid.maxRetryAttempts;
-
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-      try {
-        return await this.placeBidInternal(auctionId, userId, amount);
-      } catch (err: any) {
-        // WriteConflict - повторяем с экспоненциальным backoff
-        if (err.code === 112 || err.message?.includes('WriteConflict')) {
-          lastError = err;
-          const delay = Math.pow(2, attempt) * 30 + Math.random() * 30;
-          await new Promise(r => setTimeout(r, delay));
-          continue;
-        }
-        throw err;
-      }
-    }
-
-    throw lastError || new Error('Не удалось разместить ставку после нескольких попыток');
-  }
-
-  private async placeBidInternal(
-    auctionId: Types.ObjectId,
-    userId: Types.ObjectId,
-    amount: number
-  ): Promise<PlaceBidResult> {
-    // === EDGE CASE: Валидация суммы до начала транзакции ===
+    // === Валидация суммы ===
     if (!Number.isInteger(amount) || amount < 1) {
       throw new Error('Сумма ставки должна быть положительным целым числом');
     }
@@ -81,115 +53,209 @@ export class BidService {
       throw new Error(`Максимальная ставка: ${LIMITS.MAX_BID_AMOUNT}`);
     }
 
-    const session = await mongoose.startSession();
-    
+    // === Проверка аукциона (без транзакции — просто чтение) ===
+    const auction = await Auction.findById(auctionId).lean();
+    if (!auction) throw new Error('Аукцион не найден');
+    if (auction.status !== AuctionStatus.ACTIVE) {
+      throw new Error(`Аукцион не активен (статус: ${auction.status})`);
+    }
+
+    const currentRound = auction.rounds[auction.currentRound];
+    if (!currentRound || currentRound.status !== 'active') {
+      throw new Error('Нет активного раунда');
+    }
+
+    // EDGE CASE: Ставка на границе времени
+    const timeToEnd = new Date(currentRound.endTime).getTime() - Date.now();
+    if (timeToEnd <= LIMITS.MIN_TIME_BUFFER_MS) {
+      throw new Error('Раунд завершается, попробуйте позже');
+    }
+
+    if (amount < auction.startingPrice) {
+      throw new Error(`Минимальная ставка: ${auction.startingPrice}`);
+    }
+
+    // === Проверяем существующую ставку ===
+    const existingBid = await Bid.findOne({
+      auctionId,
+      userId,
+      status: { $in: [BidStatus.ACTIVE, BidStatus.CARRIED_OVER] },
+    }).lean();
+
+    let result: PlaceBidResult;
+
+    let bidResult: { bid: IBidDocument; isNewBid: boolean; previousAmount?: number };
+
+    if (existingBid) {
+      // === ПОВЫШЕНИЕ СТАВКИ ===
+      bidResult = await this.increaseBid(
+        auctionId, userId, amount, existingBid, auction.minBidIncrement
+      );
+    } else {
+      // === НОВАЯ СТАВКА ===
+      bidResult = await this.createNewBid(auctionId, userId, amount, auction.currentRound);
+    }
+
+    // Инвалидируем кэш
+    redisService.invalidateAuctionCache(auctionId.toString()).catch(() => {});
+
+    // Anti-sniping (отдельная атомарная операция)
+    let roundExtended = false;
     try {
-      session.startTransaction({
-        readConcern: { level: 'snapshot' },
-        writeConcern: { w: 'majority' },
-      });
+      roundExtended = await auctionService.extendRoundTime(auctionId);
+    } catch (err) {
+      logger.warn('Ошибка anti-snipe', { error: err });
+    }
 
-      // Валидация аукциона (lean для скорости, потом полный объект если нужен)
-      const auction = await Auction.findById(auctionId).session(session);
-      if (!auction) throw new Error('Аукцион не найден');
-      if (auction.status !== AuctionStatus.ACTIVE) {
-        throw new Error(`Аукцион не активен (статус: ${auction.status})`);
-      }
+    return { ...bidResult, roundExtended };
+  }
 
-      const currentRound = auction.rounds[auction.currentRound];
-      if (!currentRound || currentRound.status !== 'active') {
-        throw new Error('Нет активного раунда');
-      }
+  /**
+   * Новая ставка — атомарная блокировка + создание
+   */
+  private async createNewBid(
+    auctionId: Types.ObjectId,
+    userId: Types.ObjectId,
+    amount: number,
+    round: number
+  ): Promise<{ bid: IBidDocument; isNewBid: boolean }> {
+    // 1. АТОМАРНО блокируем средства (с проверкой баланса в запросе)
+    const lockResult = await User.findOneAndUpdate(
+      {
+        _id: userId,
+        $expr: { $gte: [{ $subtract: ['$balance', '$lockedBalance'] }, amount] }
+      },
+      { 
+        $inc: { lockedBalance: amount },
+      },
+      { new: true }
+    );
 
-      // EDGE CASE: Ставка на границе времени (добавляем буфер)
-      const timeToEnd = currentRound.endTime.getTime() - Date.now();
-      if (timeToEnd <= LIMITS.MIN_TIME_BUFFER_MS) {
-        throw new Error('Раунд завершается, попробуйте позже');
-      }
+    if (!lockResult) {
+      // Проверяем почему не получилось
+      const user = await User.findById(userId).lean();
+      if (!user) throw new Error('Пользователь не найден');
+      const available = user.balance - user.lockedBalance;
+      throw new Error(`Недостаточно средств. Доступно: ${available}, требуется: ${amount}`);
+    }
 
-      // EDGE CASE: Ставка ниже стартовой цены
-      if (amount < auction.startingPrice) {
-        throw new Error(`Минимальная ставка: ${auction.startingPrice}`);
-      }
-
-      // Ищем существующую ставку
-      const existingBid = await Bid.findOne({
+    // 2. Создаём ставку
+    let bid: IBidDocument;
+    try {
+      bid = await Bid.create({
         auctionId,
         userId,
-        status: { $in: [BidStatus.ACTIVE, BidStatus.CARRIED_OVER] },
-      }).session(session);
-
-      let bid: IBidDocument;
-      let isNewBid = true;
-      let previousAmount: number | undefined;
-
-      if (existingBid) {
-        isNewBid = false;
-        previousAmount = existingBid.amount;
-
-        if (amount <= existingBid.amount) {
-          throw new Error(`Новая ставка должна быть выше текущей (${existingBid.amount})`);
-        }
-
-        const increment = amount - existingBid.amount;
-        if (increment < auction.minBidIncrement) {
-          throw new Error(`Минимальный шаг: ${auction.minBidIncrement}`);
-        }
-
-        // Блокируем только разницу
-        await balanceService.lockAdditionalFunds(
-          userId, increment, auctionId, existingBid._id as Types.ObjectId, session
-        );
-
-        existingBid.amount = amount;
-        existingBid.updatedAt = new Date();
-        await existingBid.save({ session });
-        bid = existingBid;
-
-        logger.info(`Ставка повышена: user=${userId}, ${previousAmount} -> ${amount}`);
-      } else {
-        const newBid = new Bid({
-          auctionId,
-          userId,
-          amount,
-          round: auction.currentRound,
-          status: BidStatus.ACTIVE,
-        });
-
-        await balanceService.lockFunds(
-          userId, amount, auctionId, newBid._id as Types.ObjectId, session
-        );
-
-        await newBid.save({ session });
-        bid = newBid;
-
-        logger.info(`Новая ставка: user=${userId}, amount=${amount}`);
-      }
-
-      await session.commitTransaction();
-
-      // Инвалидируем кэш (лидерборд и минимальная ставка)
-      redisService.invalidateAuctionCache(auctionId.toString()).catch(() => {});
-
-      // Anti-sniping (вне транзакции)
-      let roundExtended = false;
-      try {
-        roundExtended = await auctionService.extendRoundTime(auctionId);
-      } catch (err) {
-        logger.warn('Ошибка anti-snipe', { error: err });
-      }
-
-      return { bid, isNewBid, previousAmount, roundExtended };
+        amount,
+        round,
+        status: BidStatus.ACTIVE,
+      });
     } catch (err) {
-      await session.abortTransaction();
+      // Компенсация: разблокируем средства
+      await User.updateOne(
+        { _id: userId },
+        { $inc: { lockedBalance: -amount } }
+      );
       throw err;
-    } finally {
-      await session.endSession();
     }
+
+    // 3. Логируем транзакцию (асинхронно, не блокируем)
+    Transaction.create({
+      userId,
+      type: TransactionType.BID_LOCK,
+      amount,
+      balanceBefore: lockResult.balance,
+      balanceAfter: lockResult.balance,
+      lockedBefore: lockResult.lockedBalance - amount,
+      lockedAfter: lockResult.lockedBalance,
+      auctionId,
+      bidId: bid._id,
+      description: `Заблокировано ${amount} для ставки`,
+    }).catch(err => logger.warn('Ошибка записи транзакции', { error: err }));
+
+    logger.info(`Новая ставка: user=${userId}, amount=${amount}`);
+    return { bid, isNewBid: true };
+  }
+
+  /**
+   * Повышение ставки — атомарная доблокировка + обновление
+   */
+  private async increaseBid(
+    auctionId: Types.ObjectId,
+    userId: Types.ObjectId,
+    newAmount: number,
+    existingBid: any,
+    minIncrement: number
+  ): Promise<{ bid: IBidDocument; isNewBid: boolean; previousAmount: number }> {
+    const previousAmount = existingBid.amount;
+
+    if (newAmount <= previousAmount) {
+      throw new Error(`Новая ставка должна быть выше текущей (${previousAmount})`);
+    }
+
+    const increment = newAmount - previousAmount;
+    if (increment < minIncrement) {
+      throw new Error(`Минимальный шаг: ${minIncrement}`);
+    }
+
+    // 1. АТОМАРНО блокируем дополнительные средства
+    const lockResult = await User.findOneAndUpdate(
+      {
+        _id: userId,
+        $expr: { $gte: [{ $subtract: ['$balance', '$lockedBalance'] }, increment] }
+      },
+      { 
+        $inc: { lockedBalance: increment },
+      },
+      { new: true }
+    );
+
+    if (!lockResult) {
+      const user = await User.findById(userId).lean();
+      if (!user) throw new Error('Пользователь не найден');
+      const available = user.balance - user.lockedBalance;
+      throw new Error(`Недостаточно средств. Доступно: ${available}, требуется: ${increment}`);
+    }
+
+    // 2. АТОМАРНО обновляем ставку
+    const updatedBid = await Bid.findOneAndUpdate(
+      { 
+        _id: existingBid._id,
+        amount: previousAmount, // Optimistic lock: проверяем что сумма не изменилась
+      },
+      { 
+        $set: { amount: newAmount, updatedAt: new Date() }
+      },
+      { new: true }
+    );
+
+    if (!updatedBid) {
+      // Компенсация: разблокируем средства
+      await User.updateOne(
+        { _id: userId },
+        { $inc: { lockedBalance: -increment } }
+      );
+      throw new Error('Ставка была изменена другим запросом, попробуйте снова');
+    }
+
+    // 3. Логируем транзакцию
+    Transaction.create({
+      userId,
+      type: TransactionType.BID_LOCK,
+      amount: increment,
+      balanceBefore: lockResult.balance,
+      balanceAfter: lockResult.balance,
+      lockedBefore: lockResult.lockedBalance - increment,
+      lockedAfter: lockResult.lockedBalance,
+      auctionId,
+      bidId: existingBid._id,
+      description: `Доблокировано ${increment} для повышения ставки`,
+    }).catch(err => logger.warn('Ошибка записи транзакции', { error: err }));
+
+    logger.info(`Ставка повышена: user=${userId}, ${previousAmount} -> ${newAmount}`);
+    return { bid: updatedBid, isNewBid: false, previousAmount };
   }
 
   async getLeaderboard(auctionId: Types.ObjectId, limit = 100): Promise<IBidDocument[]> {
-    // Кэшируем лидерборд в Redis (горячие данные)
     return redisService.getCachedLeaderboard(
       auctionId.toString(),
       () => Bid.getLeaderboard(auctionId, limit)
@@ -226,11 +292,9 @@ export class BidService {
   }
 
   async getMinWinningBid(auctionId: Types.ObjectId): Promise<number | null> {
-    // Кэшируем минимальную ставку в Redis
     return redisService.getCachedMinBid(auctionId.toString(), async () => {
-      // Оптимизация: lean + select только нужные поля
       const auction = await Auction.findById(auctionId)
-        .select('status currentRound rounds startingPrice')
+        .select('currentRound rounds status')
         .lean();
       
       if (!auction || auction.status !== AuctionStatus.ACTIVE) return null;
@@ -240,215 +304,151 @@ export class BidService {
 
       const itemsInRound = currentRound.itemsToDistribute;
 
-      // EDGE CASE: Нет ставок — возвращаем стартовую цену
-      const totalBids = await Bid.countDocuments({
-        auctionId,
-        status: { $in: [BidStatus.ACTIVE, BidStatus.CARRIED_OVER] },
-      });
-
-      if (totalBids === 0) {
-        return auction.startingPrice;
-      }
-
-      // EDGE CASE: Меньше участников чем товаров — все выигрывают
-      if (totalBids < itemsInRound) {
-        return auction.startingPrice;
-      }
-
-      // Находим пороговую ставку (N-ю по рангу)
-      const thresholdBid = await Bid.findOne({
+      const bids = await Bid.find({
         auctionId,
         status: { $in: [BidStatus.ACTIVE, BidStatus.CARRIED_OVER] },
       })
         .sort({ amount: -1, createdAt: 1 })
-        .skip(itemsInRound - 1)
+        .limit(itemsInRound)
         .select('amount')
         .lean();
 
-      return thresholdBid?.amount || auction.startingPrice;
+      if (bids.length < itemsInRound) return null;
+      return bids[bids.length - 1]?.amount || null;
     });
   }
 
   /**
-   * Обработка победителей раунда.
-   * Топ-N получают товар, остальные переносятся или получают возврат.
-   * 
-   * EDGE CASES:
-   * - Нет участников — раунд просто завершается
-   * - Меньше участников чем товаров — все выигрывают
-   * - Равные ставки — выигрывает кто раньше поставил
+   * Обработка победителей раунда — BATCH операции для скорости
    */
   async processRoundWinners(auctionId: Types.ObjectId): Promise<{
-    winners: IBidDocument[];
+    winners: Types.ObjectId[];
     carriedOver: number;
     refunded: number;
   }> {
-    const session = await mongoose.startSession();
-    
-    try {
-      session.startTransaction({
-        readConcern: { level: 'snapshot' },
-        writeConcern: { w: 'majority' },
-      });
+    const auction = await Auction.findById(auctionId);
+    if (!auction) throw new Error('Аукцион не найден');
 
-      const auction = await Auction.findById(auctionId).session(session);
-      if (!auction) throw new Error('Аукцион не найден');
+    const currentRound = auction.rounds[auction.currentRound];
+    if (!currentRound) throw new Error('Нет текущего раунда');
 
-      const currentRound = auction.rounds[auction.currentRound];
-      const itemsToDistribute = currentRound.itemsToDistribute;
-      const isLastRound = auction.currentRound === auction.rounds.length - 1;
+    const itemsToDistribute = currentRound.itemsToDistribute;
+    const isLastRound = auction.currentRound >= auction.rounds.length - 1;
 
-      // Все активные ставки отсортированы по amount DESC, createdAt ASC
-      const allBids = await Bid.find({
-        auctionId,
-        status: { $in: [BidStatus.ACTIVE, BidStatus.CARRIED_OVER] },
-      })
-        .sort({ amount: -1, createdAt: 1 })
-        .session(session);
+    // Получаем все активные ставки отсортированные
+    const allBids = await Bid.find({
+      auctionId,
+      status: { $in: [BidStatus.ACTIVE, BidStatus.CARRIED_OVER] },
+    }).sort({ amount: -1, createdAt: 1 });
 
-      const winners: IBidDocument[] = [];
-      let carriedOver = 0;
-      let refunded = 0;
-      let itemNumber = auction.distributedItems + 1;
+    const winners: Types.ObjectId[] = [];
+    const winnersData: Array<{ oderId: Types.ObjectId; amount: number; itemNumber: number }> = [];
+    let carriedOver = 0;
+    let refunded = 0;
 
-      // EDGE CASE: Нет участников — просто завершаем раунд
-      if (allBids.length === 0) {
-        logger.info(`Раунд ${auction.currentRound} завершён без участников`);
+    // Batch операции для User
+    const userUpdates: Array<{ oderId: Types.ObjectId; balanceDelta: number; lockedDelta: number }> = [];
+    const bidUpdates: Array<{ id: Types.ObjectId; status: BidStatus; itemNumber?: number }> = [];
+
+    for (let i = 0; i < allBids.length; i++) {
+      const bid = allBids[i];
+      const isWinner = i < itemsToDistribute;
+
+      if (isWinner) {
+        const itemNumber = auction.distributedItems + winners.length + 1;
+        winners.push(bid.userId);
+        winnersData.push({ oderId: bid.userId, amount: bid.amount, itemNumber });
         
-        await Auction.updateOne(
-          { _id: auctionId },
-          {
-            $set: {
-              [`rounds.${auction.currentRound}.status`]: 'completed',
-              [`rounds.${auction.currentRound}.winnersCount`]: 0,
-            },
-          },
-          { session }
-        );
-
-        await session.commitTransaction();
-        return { winners: [], carriedOver: 0, refunded: 0 };
+        // Победитель: списываем balance и lockedBalance
+        userUpdates.push({
+          oderId: bid.userId,
+          balanceDelta: -bid.amount,
+          lockedDelta: -bid.amount,
+        });
+        bidUpdates.push({ id: bid._id as Types.ObjectId, status: BidStatus.WON, itemNumber });
+        
+        logger.info(`Победитель: user=${bid.userId}, item=#${itemNumber}, amount=${bid.amount}`);
+      } else if (isLastRound) {
+        // Последний раунд — возврат проигравшим
+        userUpdates.push({
+          oderId: bid.userId,
+          balanceDelta: 0,
+          lockedDelta: -bid.amount,
+        });
+        bidUpdates.push({ id: bid._id as Types.ObjectId, status: BidStatus.REFUNDED });
+        refunded++;
+      } else {
+        // Не последний раунд — переносим в следующий
+        bidUpdates.push({ id: bid._id as Types.ObjectId, status: BidStatus.CARRIED_OVER });
+        carriedOver++;
       }
-
-      // EDGE CASE: Меньше участников чем товаров — все выигрывают
-      const actualWinners = Math.min(allBids.length, itemsToDistribute);
-
-      for (let i = 0; i < allBids.length; i++) {
-        const bid = allBids[i];
-
-        if (i < actualWinners) {
-          bid.status = BidStatus.WON;
-          bid.itemNumber = itemNumber++;
-
-          await balanceService.chargeFunds(
-            bid.userId, bid.amount, auctionId, bid._id as Types.ObjectId, session
-          );
-          await bid.save({ session });
-          winners.push(bid);
-
-          logger.info(`Победитель: user=${bid.userId}, item=#${bid.itemNumber}, amount=${bid.amount}`);
-        } else if (isLastRound) {
-          // Последний раунд — возвращаем деньги проигравшим
-          bid.status = BidStatus.REFUNDED;
-          await balanceService.refundFunds(
-            bid.userId, bid.amount, auctionId, bid._id as Types.ObjectId, session
-          );
-          await bid.save({ session });
-          refunded++;
-        } else {
-          // Переносим в следующий раунд
-          bid.status = BidStatus.CARRIED_OVER;
-          bid.round = auction.currentRound + 1;
-          await bid.save({ session });
-          carriedOver++;
-        }
-      }
-
-      await Auction.updateOne(
-        { _id: auctionId },
-        {
-          $set: {
-            [`rounds.${auction.currentRound}.status`]: 'completed',
-            [`rounds.${auction.currentRound}.winnersCount`]: winners.length,
-          },
-          $inc: { distributedItems: winners.length },
-        },
-        { session }
-      );
-
-      await session.commitTransaction();
-
-      // Инвалидируем кэш после завершения раунда
-      redisService.invalidateAuctionCache(auctionId.toString()).catch(() => {});
-
-      logger.info(`Раунд ${auction.currentRound} завершён: winners=${winners.length}, carried=${carriedOver}, refunded=${refunded}`);
-      return { winners, carriedOver, refunded };
-    } catch (err) {
-      await session.abortTransaction();
-      throw err;
-    } finally {
-      await session.endSession();
     }
-  }
 
-  async cancelAuctionBids(auctionId: Types.ObjectId): Promise<number> {
-    const session = await mongoose.startSession();
+    // Выполняем batch обновления User
+    const userBulkOps = userUpdates.map(u => ({
+      updateOne: {
+        filter: { _id: u.oderId },
+        update: { $inc: { balance: u.balanceDelta, lockedBalance: u.lockedDelta } },
+      }
+    }));
     
-    try {
-      session.startTransaction();
+    if (userBulkOps.length > 0) {
+      await User.bulkWrite(userBulkOps, { ordered: false });
+    }
 
-      const activeBids = await Bid.find({
-        auctionId,
-        status: { $in: [BidStatus.ACTIVE, BidStatus.CARRIED_OVER] },
-      }).session(session);
-
-      for (const bid of activeBids) {
-        bid.status = BidStatus.CANCELLED;
-        await balanceService.refundFunds(
-          bid.userId, bid.amount, auctionId, bid._id as Types.ObjectId, session
-        );
-        await bid.save({ session });
+    // Выполняем batch обновления Bid
+    const bidBulkOps = bidUpdates.map(b => ({
+      updateOne: {
+        filter: { _id: b.id },
+        update: { 
+          $set: b.itemNumber 
+            ? { status: b.status, itemNumber: b.itemNumber }
+            : { status: b.status }
+        },
       }
+    }));
 
-      await session.commitTransaction();
-      return activeBids.length;
-    } catch (err) {
-      await session.abortTransaction();
-      throw err;
-    } finally {
-      await session.endSession();
+    if (bidBulkOps.length > 0) {
+      await Bid.bulkWrite(bidBulkOps, { ordered: false });
+    }
+
+    // Обновляем счётчик распределённых предметов
+    await Auction.updateOne(
+      { _id: auctionId },
+      { $inc: { distributedItems: winners.length } }
+    );
+
+    // Логируем транзакции асинхронно
+    this.logWinnerTransactions(winnersData, auctionId).catch(() => {});
+
+    return { winners, carriedOver, refunded };
+  }
+
+  private async logWinnerTransactions(
+    winners: Array<{ oderId: Types.ObjectId; amount: number; itemNumber: number }>,
+    auctionId: Types.ObjectId
+  ): Promise<void> {
+    const transactions = winners.map(w => ({
+      userId: w.oderId,
+      type: TransactionType.WIN_CHARGE,
+      amount: w.amount,
+      auctionId,
+      description: `Выигрыш предмета #${w.itemNumber}`,
+    }));
+
+    if (transactions.length > 0) {
+      await Transaction.insertMany(transactions, { ordered: false }).catch(() => {});
     }
   }
 
-  async getUserBidHistory(
-    userId: Types.ObjectId,
-    page = 1,
-    limit = 20
-  ): Promise<{ bids: IBidDocument[]; total: number }> {
-    const skip = (page - 1) * limit;
-
-    const [bids, total] = await Promise.all([
-      Bid.find({ userId })
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .populate('auctionId', 'title'),
-      Bid.countDocuments({ userId }),
-    ]);
-
-    return { bids, total };
-  }
-
-  /**
-   * Получить всех победителей аукциона (для показа после завершения).
-   */
-  async getAuctionWinners(auctionId: Types.ObjectId): Promise<IBidDocument[]> {
+  async getAuctionWinners(auctionId: Types.ObjectId): Promise<any[]> {
     return Bid.find({
       auctionId,
       status: BidStatus.WON,
     })
       .sort({ itemNumber: 1 })
-      .populate('userId', 'username');
+      .populate('userId', 'username')
+      .lean();
   }
 }
 

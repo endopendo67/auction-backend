@@ -1,4 +1,4 @@
-import mongoose, { ClientSession, Types } from 'mongoose';
+import { Types } from 'mongoose';
 import { User, Transaction, TransactionType, IUserDocument } from '../models';
 import { logger } from '../utils/logger';
 
@@ -10,18 +10,15 @@ const LIMITS = {
 
 /**
  * Сервис балансов.
- * Все операции атомарны и логируются в Transaction.
- * 
- * EDGE CASES обработаны:
- * - Отрицательные/нулевые суммы
- * - Переполнение баланса
- * - Конкурентные изменения (race conditions)
- * - Несоответствие locked vs balance
+ * ВСЕ ОПЕРАЦИИ АТОМАРНЫ — без транзакций, без WriteConflict.
+ * Каждая операция — один атомарный findOneAndUpdate с условиями.
  */
 export class BalanceService {
 
+  /**
+   * Пополнение баланса — атомарно
+   */
   async deposit(userId: Types.ObjectId, amount: number): Promise<IUserDocument> {
-    // EDGE CASE: Невалидная сумма
     if (!Number.isInteger(amount) || amount <= 0) {
       throw new Error('Сумма депозита должна быть положительным целым числом');
     }
@@ -29,221 +26,136 @@ export class BalanceService {
       throw new Error(`Максимальный депозит: ${LIMITS.MAX_DEPOSIT}`);
     }
 
-    const session = await mongoose.startSession();
-    
-    try {
-      session.startTransaction({
-        readConcern: { level: 'snapshot' },
-        writeConcern: { w: 'majority' },
-      });
+    // АТОМАРНО: проверяем лимит и обновляем в одном запросе
+    const user = await User.findOneAndUpdate(
+      {
+        _id: userId,
+        balance: { $lte: LIMITS.MAX_BALANCE - amount }
+      },
+      { $inc: { balance: amount } },
+      { new: true }
+    );
 
-      const user = await User.findById(userId).session(session);
-      if (!user) throw new Error('Пользователь не найден');
-
-      // EDGE CASE: Переполнение баланса
-      if (user.balance + amount > LIMITS.MAX_BALANCE) {
-        throw new Error(`Баланс превысит максимум (${LIMITS.MAX_BALANCE})`);
-      }
-
-      const balanceBefore = user.balance;
-      const lockedBefore = user.lockedBalance;
-
-      user.balance += amount;
-      await user.save({ session });
-
-      await Transaction.create([{
-        userId,
-        type: TransactionType.DEPOSIT,
-        amount,
-        balanceBefore,
-        balanceAfter: user.balance,
-        lockedBefore,
-        lockedAfter: user.lockedBalance,
-        description: `Пополнение на ${amount} звёзд`,
-      }], { session });
-
-      await session.commitTransaction();
-      logger.info(`Депозит ${amount} для user=${userId}`);
-      return user;
-    } catch (err) {
-      await session.abortTransaction();
-      throw err;
-    } finally {
-      await session.endSession();
+    if (!user) {
+      // Проверяем почему не получилось
+      const existingUser = await User.findById(userId).lean();
+      if (!existingUser) throw new Error('Пользователь не найден');
+      throw new Error(`Баланс превысит максимум (${LIMITS.MAX_BALANCE})`);
     }
+
+    // Логируем транзакцию асинхронно
+    Transaction.create({
+      userId,
+      type: TransactionType.DEPOSIT,
+      amount,
+      balanceBefore: user.balance - amount,
+      balanceAfter: user.balance,
+      lockedBefore: user.lockedBalance,
+      lockedAfter: user.lockedBalance,
+      description: `Пополнение на ${amount} звёзд`,
+    }).catch(err => logger.warn('Ошибка записи транзакции', { error: err }));
+
+    logger.info(`Депозит ${amount} для user=${userId}`);
+    return user;
   }
 
-  async lockFunds(
+  /**
+   * Блокировка средств — атомарно (используется в bid.service)
+   */
+  async lockFundsAtomic(
     userId: Types.ObjectId,
     amount: number,
-    auctionId: Types.ObjectId,
-    bidId: Types.ObjectId,
-    session: ClientSession
-  ): Promise<void> {
-    const user = await User.findById(userId).session(session);
-    if (!user) throw new Error('Пользователь не найден');
-
-    const available = user.balance - user.lockedBalance;
-    if (available < amount) {
-      throw new Error(`Недостаточно средств. Доступно: ${available}, требуется: ${amount}`);
-    }
-
-    const balanceBefore = user.balance;
-    const lockedBefore = user.lockedBalance;
-
-    // Атомарное обновление с проверкой
-    const result = await User.updateOne(
+    auctionId?: Types.ObjectId,
+    bidId?: Types.ObjectId
+  ): Promise<IUserDocument | null> {
+    const user = await User.findOneAndUpdate(
       {
         _id: userId,
         $expr: { $gte: [{ $subtract: ['$balance', '$lockedBalance'] }, amount] }
       },
       { $inc: { lockedBalance: amount } },
-      { session }
+      { new: true }
     );
 
-    if (result.modifiedCount === 0) {
-      throw new Error('Не удалось заблокировать средства (конкурентное изменение)');
+    if (user && auctionId) {
+      // Логируем асинхронно
+      Transaction.create({
+        userId,
+        type: TransactionType.BID_LOCK,
+        amount,
+        balanceBefore: user.balance,
+        balanceAfter: user.balance,
+        lockedBefore: user.lockedBalance - amount,
+        lockedAfter: user.lockedBalance,
+        auctionId,
+        bidId,
+        description: `Заблокировано ${amount} для ставки`,
+      }).catch(() => {});
     }
 
-    await Transaction.create([{
-      userId,
-      type: TransactionType.BID_LOCK,
-      amount,
-      balanceBefore,
-      balanceAfter: balanceBefore,
-      lockedBefore,
-      lockedAfter: lockedBefore + amount,
-      auctionId,
-      bidId,
-      description: `Заблокировано ${amount} для ставки`,
-    }], { session });
+    return user;
   }
 
-  async lockAdditionalFunds(
-    userId: Types.ObjectId,
-    additionalAmount: number,
-    auctionId: Types.ObjectId,
-    bidId: Types.ObjectId,
-    session: ClientSession
-  ): Promise<void> {
-    const user = await User.findById(userId).session(session);
-    if (!user) throw new Error('Пользователь не найден');
-
-    const available = user.balance - user.lockedBalance;
-    if (available < additionalAmount) {
-      throw new Error(`Недостаточно средств для повышения. Доступно: ${available}`);
-    }
-
-    const balanceBefore = user.balance;
-    const lockedBefore = user.lockedBalance;
-
-    const result = await User.updateOne(
-      {
-        _id: userId,
-        $expr: { $gte: [{ $subtract: ['$balance', '$lockedBalance'] }, additionalAmount] }
-      },
-      { $inc: { lockedBalance: additionalAmount } },
-      { session }
+  /**
+   * Разблокировка средств — атомарно (компенсация при ошибке)
+   */
+  async unlockFundsAtomic(userId: Types.ObjectId, amount: number): Promise<void> {
+    await User.updateOne(
+      { _id: userId, lockedBalance: { $gte: amount } },
+      { $inc: { lockedBalance: -amount } }
     );
-
-    if (result.modifiedCount === 0) {
-      throw new Error('Не удалось заблокировать средства (конкурентное изменение)');
-    }
-
-    await Transaction.create([{
-      userId,
-      type: TransactionType.BID_INCREASE_LOCK,
-      amount: additionalAmount,
-      balanceBefore,
-      balanceAfter: balanceBefore,
-      lockedBefore,
-      lockedAfter: lockedBefore + additionalAmount,
-      auctionId,
-      bidId,
-      description: `Дополнительная блокировка ${additionalAmount}`,
-    }], { session });
   }
 
-  async chargeFunds(
+  /**
+   * Списание средств победителю — атомарно (bulk операция в bid.service)
+   */
+  async chargeFundsAtomic(
     userId: Types.ObjectId,
     amount: number,
-    auctionId: Types.ObjectId,
-    bidId: Types.ObjectId,
-    session: ClientSession
-  ): Promise<void> {
-    const user = await User.findById(userId).session(session);
-    if (!user) throw new Error('Пользователь не найден');
-
-    if (user.lockedBalance < amount) {
-      logger.error(`Несоответствие баланса у ${userId}`, {
-        locked: user.lockedBalance,
-        charge: amount,
-      });
-      throw new Error('Ошибка баланса: заблокировано меньше чем нужно списать');
-    }
-
-    const balanceBefore = user.balance;
-    const lockedBefore = user.lockedBalance;
-
-    // Атомарное списание
+    auctionId?: Types.ObjectId
+  ): Promise<boolean> {
     const result = await User.updateOne(
       { _id: userId, lockedBalance: { $gte: amount } },
-      { $inc: { balance: -amount, lockedBalance: -amount } },
-      { session }
+      { $inc: { balance: -amount, lockedBalance: -amount } }
     );
 
-    if (result.modifiedCount === 0) {
-      throw new Error('Не удалось списать средства');
+    if (result.modifiedCount > 0 && auctionId) {
+      Transaction.create({
+        userId,
+        type: TransactionType.WIN_CHARGE,
+        amount,
+        auctionId,
+        description: `Списание ${amount} за выигранный лот`,
+      }).catch(() => {});
     }
 
-    await Transaction.create([{
-      userId,
-      type: TransactionType.WIN_CHARGE,
-      amount,
-      balanceBefore,
-      balanceAfter: balanceBefore - amount,
-      lockedBefore,
-      lockedAfter: lockedBefore - amount,
-      auctionId,
-      bidId,
-      description: `Списание ${amount} за выигранный лот`,
-    }], { session });
+    return result.modifiedCount > 0;
   }
 
-  async refundFunds(
+  /**
+   * Возврат средств проигравшему — атомарно
+   */
+  async refundFundsAtomic(
     userId: Types.ObjectId,
     amount: number,
-    auctionId: Types.ObjectId,
-    bidId: Types.ObjectId,
-    session: ClientSession
-  ): Promise<void> {
-    const user = await User.findById(userId).session(session);
-    if (!user) throw new Error('Пользователь не найден');
+    auctionId?: Types.ObjectId
+  ): Promise<boolean> {
+    const result = await User.updateOne(
+      { _id: userId, lockedBalance: { $gte: amount } },
+      { $inc: { lockedBalance: -amount } }
+    );
 
-    const balanceBefore = user.balance;
-    const lockedBefore = user.lockedBalance;
-    const actualRefund = Math.min(amount, user.lockedBalance);
-
-    if (actualRefund > 0) {
-      await User.updateOne(
-        { _id: userId },
-        { $inc: { lockedBalance: -actualRefund } },
-        { session }
-      );
+    if (result.modifiedCount > 0 && auctionId) {
+      Transaction.create({
+        userId,
+        type: TransactionType.REFUND,
+        amount,
+        auctionId,
+        description: `Возврат ${amount} звёзд`,
+      }).catch(() => {});
     }
 
-    await Transaction.create([{
-      userId,
-      type: TransactionType.REFUND,
-      amount: actualRefund,
-      balanceBefore,
-      balanceAfter: balanceBefore,
-      lockedBefore,
-      lockedAfter: lockedBefore - actualRefund,
-      auctionId,
-      bidId,
-      description: `Возврат ${actualRefund} звёзд`,
-    }], { session });
+    return result.modifiedCount > 0;
   }
 
   async getBalance(userId: Types.ObjectId): Promise<{
@@ -251,7 +163,6 @@ export class BalanceService {
     lockedBalance: number;
     availableBalance: number;
   }> {
-    // Оптимизация: lean + select только нужные поля
     const user = await User.findById(userId)
       .select('balance lockedBalance')
       .lean();
