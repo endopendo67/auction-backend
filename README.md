@@ -15,6 +15,22 @@ docker-compose up -d
 
 Docker-compose поднимает MongoDB с replica set (нужен для транзакций) и приложение. Всё настроено автоматически.
 
+### Запуск скриптов в Docker
+
+```bash
+# Тестовые данные
+docker-compose exec app npm run seed
+
+# Боты (8 штук с разными стратегиями)
+docker-compose exec app tsx scripts/bots.ts
+
+# Нагрузочный тест (100 ботов)
+docker-compose exec app tsx scripts/load-test.ts --bots=100
+
+# Нагрузочный тест (1000 ботов)
+docker-compose exec app tsx scripts/load-test.ts --bots=1000 --duration=120000
+```
+
 ## Локальный запуск (без Docker)
 
 ### 1. MongoDB с replica set
