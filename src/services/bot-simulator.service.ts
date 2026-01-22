@@ -3,6 +3,7 @@ import { Auction, AuctionStatus, User } from '../models';
 import { bidService } from './bid.service';
 import { auctionService } from './auction.service';
 import { logger } from '../utils/logger';
+import { socketHandler } from '../websocket/socket-handler';
 
 interface BotConfig {
   name: string;
@@ -314,7 +315,15 @@ class BotSimulatorService {
       if (newAmount <= currentBid) return;
 
       // Делаем ставку
-      await bidService.placeBid(auctionOid, bot.userId, newAmount);
+      const result = await bidService.placeBid(auctionOid, bot.userId, newAmount);
+      
+      // МГНОВЕННО рассылаем через WebSocket всем клиентам
+      socketHandler.broadcastBidUpdate(auctionId, result.bid.toJSON());
+      
+      // Если было продление времени — рассылаем
+      if (result.roundExtended) {
+        socketHandler.broadcastTimeExtension(auctionId);
+      }
       
       bot.lastBidTime = Date.now();
       if (isSnipeTime) {
