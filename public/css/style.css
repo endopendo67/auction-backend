@@ -80,7 +80,8 @@ header {
 
 /* Main content */
 main {
-  padding-top: 16px;
+  padding-top: 24px;
+  margin-top: 8px;
 }
 
 header h1 {
