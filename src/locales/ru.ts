@@ -88,6 +88,7 @@ export const ru = {
   'create.success': 'Аукцион создан и запущен!',
   'create.error': 'Ошибка при создании аукциона',
   'create.enable_bots': 'Тестовый режим',
+  'quick_bid.outbid': '⚡ Перебить',
   
   'event.round_started': 'Раунд {n} начался!',
   'event.round_ending': 'Раунд скоро завершится!',

@@ -727,6 +727,32 @@ textarea {
 }
 
 /* ==================== */
+/* OUTBID BUTTON */
+/* ==================== */
+.btn-outbid {
+  width: 100%;
+  padding: 14px 20px;
+  font-size: 16px;
+  font-weight: 600;
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: var(--border-radius);
+  cursor: pointer;
+  transition: var(--transition);
+  margin-top: 12px;
+}
+
+.btn-outbid:hover {
+  background: var(--accent-hover);
+}
+
+.btn-outbid:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ==================== */
 /* NOTIFICATIONS */
 /* ==================== */
 .notifications {

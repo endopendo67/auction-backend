@@ -57,7 +57,6 @@ const el = {
   yourPosition: $('your-position'),
   bidAmount: $('bid-amount'),
   placeBidBtn: $('place-bid-btn'),
-  quickBidIncrement: $('quick-bid-increment'),
   quickBidOutbid: $('quick-bid-outbid'),
   leaderboardBody: $('leaderboard-body'),
   refreshLeaderboardBtn: $('refresh-leaderboard-btn'),
@@ -745,33 +744,26 @@ async function handlePlaceBid() {
   }
 }
 
-// Быстрая ставка (+10% или перебить лидера)
-async function handleQuickBid(type) {
+// Быстрая ставка — перебить лидера
+async function handleOutbid() {
   if (!state.user || !state.currentAuction) return;
   
-  const btn = type === 'increment' ? el.quickBidIncrement : el.quickBidOutbid;
-  
   try {
-    btn.disabled = true;
-    el.quickBidIncrement.disabled = true;
     el.quickBidOutbid.disabled = true;
     
-    const result = await api.quickBid(state.currentAuction.id, state.user.id, type);
+    const result = await api.quickBid(state.currentAuction.id, state.user.id, 'outbid');
     
     await updateBalance();
     await loadUserStatus(state.currentAuction.id);
     await loadLeaderboard(state.currentAuction.id);
     
     const amount = result.data.bid.amount;
-    const msg = type === 'increment' 
-      ? t('auction.bid_raised', { amount }) + ' (+10%)'
-      : t('auction.bid_raised', { amount }) + ' (Outbid!)';
-    
-    notify(result.data.roundExtended ? msg + ' ' + t('auction.time_extended') : msg, 'success');
+    notify(result.data.roundExtended 
+      ? t('auction.bid_raised', { amount }) + ' ' + t('auction.time_extended') 
+      : t('auction.bid_raised', { amount }), 'success');
   } catch (err) {
     notify(err.message, 'error');
   } finally {
-    el.quickBidIncrement.disabled = false;
     el.quickBidOutbid.disabled = false;
   }
 }
@@ -1026,8 +1018,7 @@ async function init() {
   el.cancelCreateBtn?.addEventListener('click', backToList);
   el.backBtn?.addEventListener('click', backToList);
   el.placeBidBtn?.addEventListener('click', handlePlaceBid);
-  el.quickBidIncrement?.addEventListener('click', () => handleQuickBid('increment'));
-  el.quickBidOutbid?.addEventListener('click', () => handleQuickBid('outbid'));
+  el.quickBidOutbid?.addEventListener('click', handleOutbid);
   el.refreshLeaderboardBtn?.addEventListener('click', refreshLeaderboard);
   el.leaderboardPrev?.addEventListener('click', () => changeLeaderboardPage(-1));
   el.leaderboardNext?.addEventListener('click', () => changeLeaderboardPage(1));

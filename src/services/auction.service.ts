@@ -136,6 +136,11 @@ export class AuctionService {
     const auction = await Auction.findById(auctionId);
     if (!auction) throw new Error('Аукцион не найден');
 
+    // Идемпотентность: если уже активен — просто возвращаем
+    if (auction.status === AuctionStatus.ACTIVE) {
+      return auction;
+    }
+
     if (auction.status !== AuctionStatus.PENDING) {
       throw new Error(`Нельзя запустить аукцион в статусе: ${auction.status}`);
     }

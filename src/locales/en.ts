@@ -88,6 +88,7 @@ export const en = {
   'create.success': 'Auction created and started!',
   'create.error': 'Error creating auction',
   'create.enable_bots': 'Test mode',
+  'quick_bid.outbid': '⚡ Outbid',
   
   'event.round_started': 'Round {n} started!',
   'event.round_ending': 'Round ending soon!',
