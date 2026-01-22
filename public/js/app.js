@@ -71,6 +71,9 @@ const el = {
   createAuctionForm: $('create-auction-form'),
   addRoundBtn: $('add-round-btn'),
   roundsConfig: $('rounds-config'),
+  enableBotSimulation: $('enable-bot-simulation'),
+  botOptions: $('bot-options'),
+  botCount: $('bot-count'),
   
   // История
   historyBtn: $('history-btn'),
@@ -138,8 +141,8 @@ const api = {
   createAuction: (data) => 
     api.request('/auctions', { method: 'POST', body: data }),
   
-  startAuction: (auctionId) => 
-    api.request(`/auctions/${auctionId}/start`, { method: 'POST' }),
+  startAuction: (auctionId, options = {}) => 
+    api.request(`/auctions/${auctionId}/start`, { method: 'POST', body: options }),
   
   placeBid: (auctionId, userId, amount) => 
     api.request(`/auctions/${auctionId}/bid`, { method: 'POST', body: { userId, amount } }),
@@ -835,6 +838,10 @@ async function handleCreateAuction(e) {
     return;
   }
 
+  // Опции симуляции ботов
+  const enableBotSimulation = el.enableBotSimulation?.checked || false;
+  const botCount = parseInt(el.botCount?.value) || 5;
+
   const data = {
     title: $('auction-title').value,
     description: $('auction-desc').value,
@@ -847,11 +854,21 @@ async function handleCreateAuction(e) {
 
   try {
     const result = await api.createAuction(data);
-    await api.startAuction(result.data.id);
+    
+    // Запускаем с опциями ботов
+    await api.startAuction(result.data.id, { 
+      enableBotSimulation, 
+      botCount 
+    });
     
     showSection(el.auctionsSection);
     loadAuctions();
-    notify(t('create.success'), 'success');
+    
+    if (enableBotSimulation) {
+      notify(t('create.success') + ` 🤖 ${botCount} ботов запущено!`, 'success');
+    } else {
+      notify(t('create.success'), 'success');
+    }
   } catch (err) {
     notify(err.message || t('create.error'), 'error');
   }
@@ -1019,6 +1036,13 @@ async function init() {
   el.addRoundBtn?.addEventListener('click', addRoundRow);
   el.createAuctionForm?.addEventListener('submit', handleCreateAuction);
   el.langSelect?.addEventListener('change', handleLanguageChange);
+  
+  // Переключатель симуляции ботов
+  el.enableBotSimulation?.addEventListener('change', () => {
+    if (el.botOptions) {
+      el.botOptions.classList.toggle('hidden', !el.enableBotSimulation.checked);
+    }
+  });
   
   el.bidAmount?.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') handlePlaceBid();

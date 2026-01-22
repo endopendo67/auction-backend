@@ -5,3 +5,4 @@ export { roundManagerService, RoundEvent } from './round-manager.service';
 export { userService, UserService } from './user.service';
 export { redisService } from './redis.service';
 export { recoveryService } from './recovery.service';
+export { botSimulatorService } from './bot-simulator.service';

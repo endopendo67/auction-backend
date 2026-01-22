@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { Types } from 'mongoose';
 import { z } from 'zod';
-import { auctionService, bidService } from '../services';
+import { auctionService, bidService, botSimulatorService } from '../services';
 import { asyncHandler, createError } from '../middleware/error-handler';
 import { socketHandler } from '../websocket/socket-handler';
 
@@ -19,6 +19,13 @@ const createAuctionSchema = z.object({
   ).min(1),
   startTime: z.string().datetime().transform((val) => new Date(val)),
   createdBy: z.string().regex(/^[a-f\d]{24}$/i),
+  enableBotSimulation: z.boolean().optional().default(false),
+  botCount: z.number().int().min(2).max(20).optional().default(5),
+});
+
+const startAuctionSchema = z.object({
+  enableBotSimulation: z.boolean().optional().default(false),
+  botCount: z.number().int().min(2).max(20).optional().default(5),
 });
 
 const placeBidSchema = z.object({
@@ -102,11 +109,21 @@ export const auctionController = {
   // Запуск аукциона вручную
   start: asyncHandler(async (req: Request, res: Response) => {
     const auctionId = new Types.ObjectId(req.params.id);
+    const { enableBotSimulation, botCount } = startAuctionSchema.parse(req.body || {});
+    
     const auction = await auctionService.startAuction(auctionId);
+    
+    // Запускаем симуляцию ботов если включена
+    if (enableBotSimulation) {
+      botSimulatorService.startSimulation(auctionId.toString(), botCount).catch(err => {
+        console.error('Ошибка запуска ботов:', err);
+      });
+    }
     
     res.json({
       success: true,
       data: auction.toJSON(),
+      botSimulation: enableBotSimulation ? { enabled: true, botCount } : undefined,
     });
   }),
 
@@ -149,6 +166,14 @@ export const auctionController = {
       new Types.ObjectId(userId),
       amount
     );
+    
+    // Мгновенно рассылаем через WebSocket
+    socketHandler.broadcastBidUpdate(auctionId.toString(), result.bid.toJSON());
+    
+    // Если было продление времени — рассылаем отдельно
+    if (result.roundExtended) {
+      socketHandler.broadcastTimeExtension(auctionId.toString());
+    }
     
     res.status(result.isNewBid ? 201 : 200).json({
       success: true,
@@ -259,6 +284,13 @@ export const auctionController = {
     }
     
     const result = await bidService.placeBid(auctionId, userObjectId, newAmount);
+    
+    // Мгновенно рассылаем через WebSocket
+    socketHandler.broadcastBidUpdate(auctionId.toString(), result.bid.toJSON());
+    
+    if (result.roundExtended) {
+      socketHandler.broadcastTimeExtension(auctionId.toString());
+    }
     
     res.status(result.isNewBid ? 201 : 200).json({
       success: true,

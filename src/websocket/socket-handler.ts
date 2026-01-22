@@ -9,20 +9,10 @@ interface AuctionRoom {
   clients: Set<string>;
 }
 
-// Для батчинга обновлений лидерборда (оптимизация под тысячи клиентов)
-interface PendingLeaderboardUpdate {
-  auctionId: string;
-  timeout: NodeJS.Timeout;
-}
-
 class SocketHandler {
   private io: Server | null = null;
   private auctionRooms: Map<string, AuctionRoom> = new Map();
   private lobbyClients: Set<string> = new Set(); // Клиенты в лобби (список аукционов)
-  private pendingLeaderboardUpdates: Map<string, PendingLeaderboardUpdate> = new Map();
-  
-  // Throttle: не чаще чем раз в 200мс отправляем обновления лидерборда
-  private readonly LEADERBOARD_THROTTLE_MS = 200;
 
   initialize(httpServer: HttpServer): Server {
     this.io = new Server(httpServer, {
@@ -104,9 +94,12 @@ class SocketHandler {
       }
       room.clients.add(socket.id);
 
-      // Отправляем текущее состояние
-      const roundInfo = await auctionService.getCurrentRoundInfo(new Types.ObjectId(auctionId));
-      const minWinningBid = await bidService.getMinWinningBid(new Types.ObjectId(auctionId));
+      // Отправляем текущее состояние + лидерборд МГНОВЕННО
+      const [roundInfo, minWinningBid, leaderboard] = await Promise.all([
+        auctionService.getCurrentRoundInfo(new Types.ObjectId(auctionId)),
+        bidService.getMinWinningBid(new Types.ObjectId(auctionId)),
+        bidService.getLeaderboard(new Types.ObjectId(auctionId), 100),
+      ]);
 
       socket.emit('auction:joined', {
         auctionId,
@@ -114,6 +107,17 @@ class SocketHandler {
         roundInfo,
         minWinningBid,
         subscribersCount: room.clients.size,
+      });
+
+      // Сразу отправляем лидерборд клиенту
+      socket.emit('auction:leaderboard', {
+        auctionId,
+        leaderboard: leaderboard.map((bid, index) => ({
+          position: index + 1,
+          amount: bid.amount,
+          username: (bid.userId as any)?.username || 'Unknown',
+          status: bid.status,
+        })),
       });
 
       logger.debug(`Клиент ${socket.id} присоединился к аукциону ${auctionId}`);
@@ -225,34 +229,21 @@ class SocketHandler {
     }
   }
 
-  // Рассылка новой ставки с throttled лидербордом
+  // Рассылка новой ставки — МГНОВЕННО без throttle
   async broadcastBidUpdate(auctionId: string, bid: unknown): Promise<void> {
     if (!this.io) return;
 
     const minWinningBid = await bidService.getMinWinningBid(new Types.ObjectId(auctionId));
 
-    // Сразу отправляем инфо о ставке (легковесное)
+    // Мгновенно отправляем инфо о ставке
     this.io.to(`auction:${auctionId}`).emit('auction:new_bid', {
       auctionId,
       bid,
       minWinningBid,
     });
 
-    // Throttled обновление лидерборда
-    this.scheduleLeaderboardUpdate(auctionId);
-  }
-
-  // Throttled обновление лидерборда — не чаще чем раз в LEADERBOARD_THROTTLE_MS
-  private scheduleLeaderboardUpdate(auctionId: string): void {
-    const existing = this.pendingLeaderboardUpdates.get(auctionId);
-    if (existing) return; // Уже запланировано
-
-    const timeout = setTimeout(async () => {
-      this.pendingLeaderboardUpdates.delete(auctionId);
-      await this.broadcastLeaderboard(auctionId);
-    }, this.LEADERBOARD_THROTTLE_MS);
-
-    this.pendingLeaderboardUpdates.set(auctionId, { auctionId, timeout });
+    // Мгновенно обновляем лидерборд (без throttle для real-time UX)
+    await this.broadcastLeaderboard(auctionId);
   }
 
   // Отправка лидерборда всем в комнате аукциона

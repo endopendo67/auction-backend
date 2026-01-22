@@ -4,6 +4,7 @@ export interface IUser {
   username: string;
   balance: number;
   lockedBalance: number;
+  isBot?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -35,6 +36,10 @@ const userSchema = new Schema<IUserDocument>(
       required: true,
       default: 0,
       min: 0,
+    },
+    isBot: {
+      type: Boolean,
+      default: false,
     },
   },
   {

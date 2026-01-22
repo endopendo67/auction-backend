@@ -13,7 +13,7 @@ services:
     network_mode: host
     environment:
       - NODE_ENV=${NODE_ENV:-production}
-      - PORT=3000
+      - PORT=80
       - MONGODB_URI=mongodb://127.0.0.1:27017/auction_db?directConnection=true
       - REDIS_URI=redis://127.0.0.1:6379
       - DEFAULT_ROUND_DURATION_MS=${DEFAULT_ROUND_DURATION_MS:-300000}
