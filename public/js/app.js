@@ -641,7 +641,7 @@ async function loadLeaderboard(auctionId, resetPage = true) {
       const result = await api.getWinners(auctionId);
       console.log('Winners received:', result.data?.length || 0);
       renderWinners(result.data);
-      el.leaderboardPagination?.classList.add('hidden');
+      // Пагинация управляется внутри renderWinners -> updateLeaderboardPagination
     } else {
       // Загружаем больше данных для пагинации (до 500)
       const result = await api.getLeaderboard(auctionId, 500);
@@ -699,18 +699,12 @@ function renderLeaderboard(bids, startIndex = 0) {
 }
 
 function updateLeaderboardPagination() {
-  console.log('updateLeaderboardPagination:', leaderboardPage, '/', leaderboardTotalPages);
-  
   if (leaderboardTotalPages <= 1) {
     el.leaderboardPagination?.classList.add('hidden');
     return;
   }
   
-  // Убираем hidden класс для пагинации
-  if (el.leaderboardPagination) {
-    el.leaderboardPagination.classList.remove('hidden');
-    console.log('Pagination shown, has hidden?', el.leaderboardPagination.classList.contains('hidden'));
-  }
+  el.leaderboardPagination?.classList.remove('hidden');
   
   if (el.leaderboardPage) {
     el.leaderboardPage.textContent = `${leaderboardPage} / ${leaderboardTotalPages}`;
