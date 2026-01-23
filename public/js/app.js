@@ -1270,17 +1270,15 @@ async function init() {
   el.createAuctionForm?.addEventListener('submit', handleCreateAuction);
   el.langSelect?.addEventListener('change', handleLanguageChange);
   
-  // Anti-snipe toggle status update
+  // Anti-snipe toggle - show/hide settings
   const antiSnipeEnabled = $('anti-snipe-enabled');
-  const antiSnipeStatus = $('anti-snipe-status');
-  if (antiSnipeEnabled && antiSnipeStatus) {
+  const antiSnipeSettings = $('anti-snipe-settings');
+  if (antiSnipeEnabled && antiSnipeSettings) {
     antiSnipeEnabled.addEventListener('change', () => {
       if (antiSnipeEnabled.checked) {
-        antiSnipeStatus.textContent = 'вкл';
-        antiSnipeStatus.classList.remove('off');
+        antiSnipeSettings.classList.remove('hidden');
       } else {
-        antiSnipeStatus.textContent = 'выкл';
-        antiSnipeStatus.classList.add('off');
+        antiSnipeSettings.classList.add('hidden');
       }
     });
   }

@@ -788,125 +788,136 @@ textarea {
 }
 
 /* ==================== */
-/* COLLAPSIBLE SECTION */
+/* OPTION CARDS */
 /* ==================== */
-.collapsible-section {
-  margin-top: 12px;
+.option-card {
+  margin-top: 16px;
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius);
   background: var(--bg-primary);
+  overflow: hidden;
 }
 
-.collapsible-header {
+.option-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 12px 14px;
-  cursor: pointer;
-  user-select: none;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-secondary);
-  list-style: none;
+  justify-content: space-between;
+  padding: 14px 16px;
+  gap: 12px;
 }
 
-.collapsible-header::-webkit-details-marker {
+.option-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+.option-icon {
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.option-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.option-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.option-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.option-settings {
+  padding: 14px 16px;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border-color);
+}
+
+.option-settings.hidden {
   display: none;
 }
 
-.collapsible-arrow {
-  font-size: 14px;
-  transition: transform 0.2s;
-  color: var(--text-muted);
-}
-
-details[open] .collapsible-arrow {
-  transform: rotate(90deg);
-}
-
-.collapsible-badge {
-  margin-left: auto;
-  font-size: 10px;
-  font-weight: 600;
-  padding: 2px 8px;
-  border-radius: 8px;
-  background: var(--success);
-  color: white;
-  text-transform: uppercase;
-}
-
-.collapsible-badge.off {
-  background: var(--text-muted);
-}
-
-.collapsible-body {
-  padding: 12px 14px;
-  border-top: 1px solid var(--border-color);
-  background: var(--bg-secondary);
-}
-
-.checkbox-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 13px;
-  color: var(--text-primary);
-  cursor: pointer;
+.settings-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
   margin-bottom: 12px;
 }
 
-.checkbox-row input[type="checkbox"] {
-  width: 16px;
-  height: 16px;
-  accent-color: var(--accent);
+.settings-row:last-of-type {
+  margin-bottom: 8px;
 }
 
-.compact-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
-}
-
-.compact-field {
+.setting-field {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 
-.compact-field .field-label {
-  font-size: 10px;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
+.setting-field label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
 }
 
-.compact-field input {
-  width: 100%;
-  padding: 8px;
+.field-input {
+  display: flex;
+  align-items: center;
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius-sm);
   background: var(--bg-primary);
+  overflow: hidden;
+}
+
+.field-input input {
+  flex: 1;
+  padding: 10px 12px;
+  border: none;
+  background: transparent;
   color: var(--text-primary);
-  font-size: 13px;
-  text-align: center;
+  font-size: 14px;
+  min-width: 0;
 }
 
-.compact-field .field-unit {
-  font-size: 10px;
+.field-input input:focus {
+  outline: none;
+}
+
+.field-input span {
+  padding: 10px 12px;
+  font-size: 12px;
   color: var(--text-muted);
-  text-align: center;
+  background: var(--bg-tertiary);
+  border-left: 1px solid var(--border-color);
+  white-space: nowrap;
 }
 
-.hint-text {
-  margin-top: 10px;
+.settings-hint {
   font-size: 11px;
   color: var(--text-muted);
-  font-style: italic;
+  margin: 0;
 }
 
-@media (max-width: 480px) {
-  .compact-grid {
-    grid-template-columns: repeat(2, 1fr);
+@media (max-width: 400px) {
+  .settings-row {
+    grid-template-columns: 1fr;
+  }
+  
+  .option-desc {
+    display: none;
   }
 }
 
