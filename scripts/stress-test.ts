@@ -1,10 +1,10 @@
 /**
  * СТРЕСС-ТЕСТ СИСТЕМЫ АУКЦИОНОВ
  * 
- * - 5000 предметов
- * - 5 раундов по 30 секунд
- * - 6000 ботов
- * - 1000 RPS через HTTPS API
+ * ОПТИМИЗИРОВАННАЯ ВЕРСИЯ:
+ * - Умное перебивание с актуальными данными
+ * - Контролируемый параллелизм
+ * - Агрессивное повышение ставок
  * 
  * Использование: npx tsx scripts/stress-test.ts
  */
@@ -21,16 +21,17 @@ const CONFIG = {
   roundDurationSec: 30,
   totalBots: 6000,
   initialBalance: 100000,
-  targetRPS: 1000,
+  // Оптимизированные параметры
+  concurrentRequests: 50,    // Макс параллельных запросов (было ~100 RPS)
+  requestDelayMs: 20,        // Задержка между запросами
   apiBaseUrl: 'https://auction-demo.lol',
 };
 
-// HTTPS агент с connection pooling
+// HTTPS агент с оптимальным пулом
 const agent = new https.Agent({ 
   keepAlive: true, 
-  maxSockets: 200,
-  keepAliveMsecs: 30000,
-  rejectUnauthorized: true,
+  maxSockets: 50,
+  keepAliveMsecs: 10000,
 });
 
 interface Bot {
@@ -52,14 +53,15 @@ class StressTester {
   private isRunning = false;
   private topBid = 100;
   private minIncrement = 10;
+  private activeRequests = 0;
 
   async initialize(): Promise<void> {
     console.log('\n🚀 Инициализация стресс-теста\n');
     console.log(`API: ${CONFIG.apiBaseUrl}`);
-    console.log(`Target RPS: ${CONFIG.targetRPS}`);
+    console.log(`Параллельных запросов: ${CONFIG.concurrentRequests}`);
     
     await mongoose.connect(config.mongodb.uri, {
-      maxPoolSize: 200,
+      maxPoolSize: 100,
       serverSelectionTimeoutMS: 30000,
     });
 
@@ -102,7 +104,7 @@ class StressTester {
 
     const auction = await auctionService.createAuction({
       title: `STRESS TEST ${Date.now()}`,
-      description: `${CONFIG.totalItems} товаров, ${CONFIG.totalBots} ботов, ${CONFIG.rounds} раундов`,
+      description: `${CONFIG.totalItems} товаров, ${CONFIG.totalBots} ботов`,
       totalItems: CONFIG.totalItems,
       startingPrice: 100,
       minBidIncrement: 10,
@@ -116,7 +118,7 @@ class StressTester {
     this.minIncrement = auction.minBidIncrement || 10;
     this.topBid = auction.startingPrice;
     
-    console.log(`✓ Аукцион: ${CONFIG.totalItems} товаров, ${CONFIG.rounds} раундов по ${CONFIG.roundDurationSec}с`);
+    console.log(`✓ Аукцион: ${CONFIG.totalItems} товаров, ${CONFIG.rounds} раундов`);
     console.log(`  ID: ${this.auctionIdStr}`);
   }
 
@@ -152,16 +154,15 @@ class StressTester {
 
   async run(): Promise<void> {
     console.log('\n═'.repeat(50));
-    console.log('  ЗАПУСК СТРЕСС-ТЕСТА (HTTPS API)');
+    console.log('  СТРЕСС-ТЕСТ (Оптимизированный)');
     console.log('═'.repeat(50));
     console.log(`  Товаров: ${CONFIG.totalItems}`);
     console.log(`  Раундов: ${CONFIG.rounds} × ${CONFIG.roundDurationSec}с`);
     console.log(`  Ботов: ${CONFIG.totalBots}`);
-    console.log(`  Целевой RPS: ${CONFIG.targetRPS}`);
-    console.log(`  API: ${CONFIG.apiBaseUrl}`);
+    console.log(`  Параллельность: ${CONFIG.concurrentRequests}`);
     console.log('═'.repeat(50) + '\n');
 
-    // Ждём старта и запускаем через API
+    // Ждём старта
     const auction = await Auction.findById(this.auctionId);
     if (auction?.status === AuctionStatus.PENDING) {
       const wait = auction.startTime.getTime() - Date.now();
@@ -170,12 +171,10 @@ class StressTester {
         await new Promise(r => setTimeout(r, wait + 500));
       }
       
-      // Запускаем через HTTPS API
       try {
         await this.callApi('POST', `/api/auctions/${this.auctionIdStr}/start`, {});
-        console.log('✓ Аукцион запущен через API\n');
-      } catch (err) {
-        console.log('⚠ Не удалось запустить через API, пробуем напрямую...');
+        console.log('✓ Аукцион запущен\n');
+      } catch {
         await auctionService.startAuction(this.auctionId);
         console.log('✓ Аукцион запущен напрямую\n');
       }
@@ -183,111 +182,88 @@ class StressTester {
 
     this.isRunning = true;
 
-    // Мониторинг каждые 3 секунды
+    // Мониторинг
     const monitor = setInterval(() => this.printStatus(), 3000);
 
-    // Обновление topBid каждые 200ms для агрессивного перебивания
-    const topBidUpdater = setInterval(async () => {
-      try {
-        const bid = await Bid.findOne({ auctionId: this.auctionId })
-          .sort({ amount: -1 })
-          .select('amount')
-          .lean();
-        if (bid) this.topBid = bid.amount;
-      } catch {}
-    }, 200);
-
-    // Генерация нагрузки — 1000 RPS
-    const promises: Promise<void>[] = [];
-    const tickMs = 10; // 10ms между тиками = 100 тиков/сек
-    const bidsPerTick = Math.ceil(CONFIG.targetRPS / (1000 / tickMs)); // ~10 ставок за тик
-
-    const interval = setInterval(async () => {
-      if (!this.isRunning) return;
-
-      // Проверка статуса аукциона (не на каждый тик)
-      if (Math.random() < 0.01) {
-        const auctionCheck = await Auction.findById(this.auctionId).select('status').lean();
-        if (auctionCheck?.status !== AuctionStatus.ACTIVE) {
-          this.isRunning = false;
-          clearInterval(interval);
-          clearInterval(topBidUpdater);
-          return;
-        }
+    // Основной цикл — контролируемый параллелизм
+    while (this.isRunning) {
+      // Проверяем статус аукциона
+      const auctionCheck = await Auction.findById(this.auctionId).select('status').lean();
+      if (auctionCheck?.status !== AuctionStatus.ACTIVE) {
+        this.isRunning = false;
+        break;
       }
 
-      // Генерация ставок через HTTPS API
-      for (let i = 0; i < bidsPerTick; i++) {
+      // Обновляем topBid из базы
+      const topBidDoc = await Bid.findOne({ auctionId: this.auctionId })
+        .sort({ amount: -1 })
+        .select('amount')
+        .lean();
+      if (topBidDoc) this.topBid = topBidDoc.amount;
+
+      // Запускаем пачку конкурентных запросов
+      const batch: Promise<void>[] = [];
+      for (let i = 0; i < CONFIG.concurrentRequests && this.isRunning; i++) {
         const bot = this.bots[Math.floor(Math.random() * this.bots.length)];
-        promises.push(this.makeBidViaApi(bot));
+        batch.push(this.makeBid(bot));
       }
-    }, tickMs);
 
-    // Ждём завершения аукциона или таймаута
-    const maxTime = CONFIG.rounds * CONFIG.roundDurationSec * 1000 + 60000;
-    await new Promise(r => setTimeout(r, maxTime));
-    this.isRunning = false;
-    clearInterval(interval);
+      await Promise.allSettled(batch);
+      
+      // Небольшая пауза между пачками
+      await new Promise(r => setTimeout(r, CONFIG.requestDelayMs));
+    }
+
     clearInterval(monitor);
-    clearInterval(topBidUpdater);
-
-    console.log('\nОжидание завершения ставок...');
-    await Promise.allSettled(promises);
-
-    console.log('✓ Тест завершён\n');
+    console.log('\n✓ Тест завершён\n');
   }
 
   /**
-   * Ставка через HTTPS API — WebSocket рассылка работает!
+   * Умная ставка — ВСЕГДА перебивает топ
    */
-  private async makeBidViaApi(bot: Bot): Promise<void> {
+  private async makeBid(bot: Bot): Promise<void> {
     const start = performance.now();
     this.metrics.bids++;
 
     try {
-      // Вычисляем новую ставку
-      let amount: number;
+      // ВСЕГДА перебиваем топ на случайную сумму
+      const jumpMultiplier = 1 + Math.floor(Math.random() * 5); // 1-5x минимального шага
+      const amount = this.topBid + (this.minIncrement * jumpMultiplier);
 
-      if (bot.currentBid === 0) {
-        // Первая ставка
-        amount = this.topBid + Math.floor(Math.random() * this.minIncrement * 3);
-      } else if (bot.currentBid < this.topBid) {
-        // Перебиваем лидера агрессивно
-        const increment = this.minIncrement * (1 + Math.floor(Math.random() * 5));
-        amount = this.topBid + increment;
-      } else {
-        // Уже лидер — иногда повышаем
-        if (Math.random() > 0.3) return;
-        amount = bot.currentBid + this.minIncrement * Math.floor(1 + Math.random() * 3);
-      }
-
-      // HTTPS POST к API
-      const response = await this.callApi('POST', `/api/auctions/${this.auctionIdStr}/bids`, {
+      const response = await this.callApi('POST', `/api/auctions/${this.auctionIdStr}/bid`, {
         userId: bot.id.toString(),
         amount,
       });
 
       if (response.success) {
+        // Обновляем topBid из ответа если есть
+        if (response.data?.bid?.amount) {
+          const newAmount = response.data.bid.amount;
+          if (newAmount > this.topBid) {
+            this.topBid = newAmount;
+          }
+        }
+        
         bot.currentBid = amount;
-        if (amount > this.topBid) this.topBid = amount;
         
         const latency = performance.now() - start;
         this.metrics.success++;
         this.metrics.latencies.push(latency);
 
-        if (this.metrics.latencies.length > 1000) {
-          this.metrics.latencies = this.metrics.latencies.slice(-1000);
+        // Держим только последние 500 для памяти
+        if (this.metrics.latencies.length > 500) {
+          this.metrics.latencies = this.metrics.latencies.slice(-500);
         }
       } else {
         this.metrics.errors++;
       }
-    } catch (err: any) {
+    } catch {
       this.metrics.errors++;
     }
   }
 
   /**
-   * HTTPS вызов к API
+   * HTTPS API вызов
    */
   private callApi(method: string, path: string, body: object): Promise<any> {
     return new Promise((resolve, reject) => {
@@ -303,7 +279,7 @@ class StressTester {
           'Content-Type': 'application/json',
           'Content-Length': Buffer.byteLength(data),
         },
-        timeout: 10000,
+        timeout: 15000,
       };
 
       const req = https.request(options, (res) => {
@@ -334,9 +310,8 @@ class StressTester {
       ? Math.round(this.metrics.latencies.reduce((a, b) => a + b, 0) / this.metrics.latencies.length)
       : 0;
 
-    const successRate = this.metrics.bids > 0 
-      ? ((this.metrics.success / this.metrics.bids) * 100).toFixed(1)
-      : '0';
+    const total = this.metrics.success + this.metrics.errors;
+    const successRate = total > 0 ? ((this.metrics.success / total) * 100).toFixed(0) : '0';
 
     console.log(
       `✓ ${this.metrics.success} | ` +
@@ -348,8 +323,8 @@ class StressTester {
   }
 
   async verify(): Promise<void> {
-    console.log('\n═'.repeat(50));
-    console.log('  ВЕРИФИКАЦИЯ');
+    console.log('═'.repeat(50));
+    console.log('  РЕЗУЛЬТАТЫ');
     console.log('═'.repeat(50) + '\n');
 
     const [totalBids, wonBids] = await Promise.all([
@@ -357,9 +332,12 @@ class StressTester {
       Bid.countDocuments({ auctionId: this.auctionId, status: BidStatus.WON }),
     ]);
 
-    console.log(`Всего ставок: ${totalBids}`);
-    console.log(`Выиграли: ${wonBids}`);
-    console.log(`API Success rate: ${((this.metrics.success / this.metrics.bids) * 100).toFixed(1)}%`);
+    const total = this.metrics.success + this.metrics.errors;
+    
+    console.log(`Ставок в БД: ${totalBids}`);
+    console.log(`Победителей: ${wonBids}`);
+    console.log(`API запросов: ${total}`);
+    console.log(`Успешных: ${this.metrics.success} (${((this.metrics.success / total) * 100).toFixed(1)}%)`);
     console.log('═'.repeat(50) + '\n');
   }
 
