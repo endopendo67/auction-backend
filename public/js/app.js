@@ -1056,7 +1056,10 @@ function handleAuctionEvent(event) {
       break;
     case 'auction_completed':
       notify(t('event.auction_completed'), 'success');
-      loadAuctionDetail(state.currentAuction.id);
+      // Загружаем детали и явно перезагружаем лидерборд как победителей
+      loadAuctionDetail(state.currentAuction.id).then(() => {
+        loadLeaderboard(state.currentAuction.id, true);
+      });
       updateBalance();
       break;
   }
