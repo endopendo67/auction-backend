@@ -575,11 +575,16 @@ function updateAuctionCard(auction) {
 
 async function openAuction(auctionId) {
   try {
-    // Загружаем базовую инфо (лидерборд придёт через WebSocket)
+    // Сбрасываем лидерборд перед загрузкой нового аукциона
+    leaderboardData = [];
+    leaderboardPage = 1;
+    leaderboardTotalPages = 1;
+    
+    // Загружаем базовую инфо
     await loadAuctionDetail(auctionId);
     showSection(el.auctionDetail);
     
-    // Подключаемся к WebSocket — он сразу отправит полный лидерборд
+    // Подключаемся к WebSocket — он сразу отправит лидерборд/победителей
     if (state.socket) {
       state.socket.emit('auction:join', auctionId);
     }
@@ -673,16 +678,28 @@ async function loadLeaderboard(auctionId, resetPage = true) {
 }
 
 function renderLeaderboardPage() {
+  console.log('renderLeaderboardPage:', leaderboardData.length, 'items, page', leaderboardPage, '/', leaderboardTotalPages);
+  
   if (!leaderboardData.length) {
     el.leaderboardBody.innerHTML = `<tr><td colspan="3">${t('leaderboard.no_bids')}</td></tr>`;
     el.leaderboardPagination?.classList.add('hidden');
     return;
   }
 
+  // Убеждаемся что страница корректна
+  if (leaderboardPage < 1) leaderboardPage = 1;
+  if (leaderboardPage > leaderboardTotalPages) leaderboardPage = leaderboardTotalPages;
+
   // Вычисляем срез для текущей страницы
   const start = (leaderboardPage - 1) * LEADERBOARD_PER_PAGE;
   const end = start + LEADERBOARD_PER_PAGE;
   const pageBids = leaderboardData.slice(start, end);
+
+  if (pageBids.length === 0) {
+    leaderboardPage = 1;
+    renderLeaderboardPage();
+    return;
+  }
 
   renderLeaderboard(pageBids, start);
   updateLeaderboardPagination();
@@ -1102,26 +1119,32 @@ function initSocket() {
 
   // Push-обновление лидерборда — МГНОВЕННОЕ для real-time
   state.socket.on('auction:leaderboard', (data) => {
+    console.log('WS: leaderboard received', data.leaderboard?.length, 'items');
+    
     if (state.currentAuction && data.auctionId === state.currentAuction.id) {
       // Игнорируем для завершённых аукционов (там показываем победителей)
       if (state.currentAuction.status === 'completed') {
         return;
       }
       
-      // Обновляем данные лидерборда (включая oduserId для поиска своей позиции)
+      // Обновляем данные лидерборда
       leaderboardData = data.leaderboard.map(b => ({
         position: b.position,
         username: b.username,
         amount: b.amount,
         status: b.status,
-        oduserId: b.oduserId,  // ID пользователя для поиска своей позиции
+        oduserId: b.oduserId,
       }));
-      leaderboardTotalPages = Math.ceil(leaderboardData.length / LEADERBOARD_PER_PAGE);
       
-      // Рендерим мгновенно
+      leaderboardTotalPages = Math.ceil(leaderboardData.length / LEADERBOARD_PER_PAGE) || 1;
+      
+      // Сбрасываем страницу если вышла за пределы
+      if (leaderboardPage > leaderboardTotalPages) {
+        leaderboardPage = 1;
+      }
+      
+      // Рендерим
       renderLeaderboardPage();
-      
-      // Обновляем статус пользователя из лидерборда (БЕЗ HTTP!)
       updateUserStatusFromLeaderboard();
     }
   });
