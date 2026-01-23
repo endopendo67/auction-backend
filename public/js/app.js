@@ -716,7 +716,30 @@ function changeLeaderboardPage(delta) {
   const newPage = leaderboardPage + delta;
   if (newPage >= 1 && newPage <= leaderboardTotalPages) {
     leaderboardPage = newPage;
-    renderLeaderboardPage();
+    
+    // Для завершённых аукционов — рендерим победителей с пагинацией
+    if (state.currentAuction?.status === 'completed' && leaderboardData.length > 0) {
+      const start = (leaderboardPage - 1) * LEADERBOARD_PER_PAGE;
+      const end = start + LEADERBOARD_PER_PAGE;
+      const pageData = leaderboardData.slice(start, end);
+      
+      el.leaderboardBody.innerHTML = pageData.map((winner) => {
+        const isYou = state.user && winner.username === state.user.username;
+        const classes = ['winning', isYou ? 'you' : ''].filter(Boolean).join(' ');
+        
+        return `
+          <tr class="${classes}">
+            <td>🏆 #${winner.itemNumber}</td>
+            <td>${escapeHtml(winner.username)}${isYou ? ' ' + t('leaderboard.you') : ''}</td>
+            <td>${winner.amount} ⭐</td>
+          </tr>
+        `;
+      }).join('');
+      
+      updateLeaderboardPagination();
+    } else {
+      renderLeaderboardPage();
+    }
   }
 }
 
@@ -726,12 +749,29 @@ function renderWinners(winners) {
   if (!winners || !winners.length) {
     console.warn('No winners to display');
     el.leaderboardBody.innerHTML = `<tr><td colspan="3">${t('leaderboard.no_winners')}</td></tr>`;
+    el.leaderboardPagination?.classList.add('hidden');
     return;
   }
 
   console.log('Rendering', winners.length, 'winners');
   
-  el.leaderboardBody.innerHTML = winners.map((winner) => {
+  // Сохраняем победителей для пагинации
+  leaderboardData = winners.map((w, idx) => ({
+    position: idx + 1,
+    username: w.username,
+    amount: w.amount,
+    itemNumber: w.itemNumber,
+  }));
+  
+  leaderboardTotalPages = Math.ceil(winners.length / LEADERBOARD_PER_PAGE);
+  leaderboardPage = 1;
+  
+  // Показываем первую страницу
+  const start = 0;
+  const end = LEADERBOARD_PER_PAGE;
+  const pageWinners = winners.slice(start, end);
+  
+  el.leaderboardBody.innerHTML = pageWinners.map((winner) => {
     const isYou = state.user && winner.username === state.user.username;
     const classes = ['winning', isYou ? 'you' : ''].filter(Boolean).join(' ');
     
@@ -743,6 +783,9 @@ function renderWinners(winners) {
       </tr>
     `;
   }).join('');
+  
+  // Показываем пагинацию если нужно
+  updateLeaderboardPagination();
 }
 
 async function loadUserStatus(auctionId) {

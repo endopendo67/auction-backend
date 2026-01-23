@@ -187,15 +187,33 @@ class StressTester {
     this.metrics.bids++;
 
     try {
-      const existingBid = await bidService.getUserBid(this.auctionId, bot.id);
-      const auction = await Auction.findById(this.auctionId).select('startingPrice minBidIncrement').lean();
+      // Получаем топовую ставку для перебивания
+      const [existingBid, leaderboard, auction] = await Promise.all([
+        bidService.getUserBid(this.auctionId, bot.id),
+        bidService.getLeaderboard(this.auctionId, 1),
+        Auction.findById(this.auctionId).select('startingPrice minBidIncrement').lean(),
+      ]);
+      
       if (!auction) return;
 
-      const minAmount = existingBid
-        ? existingBid.amount + auction.minBidIncrement
-        : auction.startingPrice;
+      const topBid = leaderboard[0]?.amount || auction.startingPrice;
+      const currentBid = existingBid?.amount || 0;
+      const minIncrement = auction.minBidIncrement;
 
-      const amount = minAmount + Math.floor(Math.random() * 50);
+      let amount: number;
+
+      if (currentBid === 0) {
+        // Первая ставка — стартовая или чуть выше
+        amount = auction.startingPrice + Math.floor(Math.random() * minIncrement * 3);
+      } else if (currentBid < topBid) {
+        // ПЕРЕБИВАЕМ лидера агрессивно
+        const increment = minIncrement * (1 + Math.floor(Math.random() * 5));
+        amount = topBid + increment;
+      } else {
+        // Уже лидер — иногда повышаем
+        if (Math.random() > 0.3) return; // 30% шанс повысить
+        amount = currentBid + minIncrement * Math.floor(1 + Math.random() * 3);
+      }
 
       await bidService.placeBid(this.auctionId, bot.id, amount);
 
