@@ -163,8 +163,7 @@ const api = {
   getWinners: (auctionId) => 
     api.request(`/auctions/${auctionId}/winners`),
   
-  getUserBidStatus: (auctionId, userId) => 
-    api.request(`/auctions/${auctionId}/user/${userId}/status`),
+  // getUserBidStatus УДАЛЁН — теперь статус вычисляется из WebSocket лидерборда
   
   // History
   getBidHistory: (userId, page = 1, limit = 20) => 

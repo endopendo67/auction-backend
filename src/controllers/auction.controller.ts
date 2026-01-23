@@ -206,29 +206,7 @@ export const auctionController = {
     });
   }),
 
-  // Статус ставки пользователя
-  getUserBidStatus: asyncHandler(async (req: Request, res: Response) => {
-    const auctionId = new Types.ObjectId(req.params.id);
-    const userId = new Types.ObjectId(req.params.userId);
-    
-    const [bid, position, minWinningBid] = await Promise.all([
-      bidService.getUserBid(auctionId, userId),
-      bidService.getUserPosition(auctionId, userId),
-      bidService.getMinWinningBid(auctionId),
-    ]);
-    
-    res.json({
-      success: true,
-      data: {
-        hasBid: !!bid,
-        bid: bid?.toJSON() || null,
-        position: position?.position || null,
-        totalBidders: position?.totalBidders || 0,
-        minWinningBid,
-        isWinning: position ? position.position <= (minWinningBid || 0) : false,
-      },
-    });
-  }),
+  // getUserBidStatus УДАЛЁН — статус теперь в WebSocket лидерборде
 
   // Победители завершённого аукциона
   getWinners: asyncHandler(async (req: Request, res: Response) => {

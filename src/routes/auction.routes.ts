@@ -33,7 +33,7 @@ router.get('/:id/leaderboard', auctionController.getLeaderboard);
 // Get winners (for completed auctions)
 router.get('/:id/winners', auctionController.getWinners);
 
-// Get user's bid status in auction
-router.get('/:id/user/:userId/status', auctionController.getUserBidStatus);
+// УДАЛЁН: router.get('/:id/user/:userId/status')
+// Статус пользователя теперь приходит через WebSocket в лидерборде
 
 export { router as auctionRoutes };
