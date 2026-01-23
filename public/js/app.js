@@ -1018,9 +1018,15 @@ function initSocket() {
     }
   });
 
-  // Push-обновление лидерборда (throttled на сервере)
+  // Push-обновление лидерборда (только для активных аукционов)
   state.socket.on('auction:leaderboard', (data) => {
     if (state.currentAuction && data.auctionId === state.currentAuction.id) {
+      // Игнорируем для завершённых аукционов (там показываем победителей)
+      if (state.currentAuction.status === 'completed') {
+        console.log('Ignoring leaderboard update for completed auction');
+        return;
+      }
+      
       // Обновляем данные лидерборда и перерисовываем текущую страницу
       leaderboardData = data.leaderboard.map(b => ({
         position: b.position,
