@@ -1270,15 +1270,19 @@ async function init() {
   el.createAuctionForm?.addEventListener('submit', handleCreateAuction);
   el.langSelect?.addEventListener('change', handleLanguageChange);
   
-  // Anti-snipe toggle - show/hide fields
+  // Anti-snipe toggle
   const antiSnipeEnabled = $('anti-snipe-enabled');
   const antiSnipeFields = $('anti-snipe-fields');
-  if (antiSnipeEnabled && antiSnipeFields) {
+  const antiSnipeBadge = $('anti-snipe-badge');
+  if (antiSnipeEnabled) {
     antiSnipeEnabled.addEventListener('change', () => {
-      if (antiSnipeEnabled.checked) {
-        antiSnipeFields.classList.remove('hidden');
-      } else {
-        antiSnipeFields.classList.add('hidden');
+      const enabled = antiSnipeEnabled.checked;
+      if (antiSnipeFields) {
+        antiSnipeFields.classList.toggle('disabled', !enabled);
+      }
+      if (antiSnipeBadge) {
+        antiSnipeBadge.textContent = enabled ? 'вкл' : 'выкл';
+        antiSnipeBadge.classList.toggle('active', enabled);
       }
     });
   }
