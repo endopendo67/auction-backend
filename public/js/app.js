@@ -911,6 +911,14 @@ async function handlePlaceBid() {
     return;
   }
 
+  // Проверяем минимальную победную ставку
+  const minBidText = el.minWinningBid?.textContent || '';
+  const minBid = parseInt(minBidText.replace(/[^\d]/g, '')) || 0;
+  if (minBid > 0 && amount < minBid) {
+    notify(`Ставка должна быть не меньше ${minBid} ⭐`, 'error');
+    return;
+  }
+
   try {
     el.placeBidBtn.disabled = true;
     const result = await api.placeBid(state.currentAuction.id, state.user.id, amount);

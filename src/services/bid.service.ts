@@ -53,8 +53,8 @@ export class BidService {
       throw new Error(`Максимальная ставка: ${LIMITS.MAX_BID_AMOUNT}`);
     }
 
-    // === Параллельная загрузка аукциона и существующей ставки ===
-    const [auction, existingBid] = await Promise.all([
+    // === Параллельная загрузка аукциона, существующей ставки и минимальной победной ===
+    const [auction, existingBid, minWinningBid] = await Promise.all([
       Auction.findById(auctionId)
         .select('status currentRound rounds startingPrice minBidIncrement')
         .lean(),
@@ -65,6 +65,7 @@ export class BidService {
       })
         .select('_id amount')
         .lean(),
+      this.getMinWinningBid(auctionId),
     ]);
 
     if (!auction) throw new Error('Аукцион не найден');
@@ -85,6 +86,11 @@ export class BidService {
 
     if (amount < auction.startingPrice) {
       throw new Error(`Минимальная ставка: ${auction.startingPrice}`);
+    }
+
+    // Проверка: ставка должна быть >= минимальной победной
+    if (minWinningBid && amount < minWinningBid) {
+      throw new Error(`Новая ставка должна быть выше текущей (${minWinningBid})`);
     }
 
     let result: PlaceBidResult;
