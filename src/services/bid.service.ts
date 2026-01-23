@@ -48,50 +48,50 @@ export class BidService {
     // === Валидация суммы ===
     if (!Number.isInteger(amount) || amount < 1) {
       throw new Error('Сумма ставки должна быть положительным целым числом');
-    }
+  }
     if (amount > LIMITS.MAX_BID_AMOUNT) {
       throw new Error(`Максимальная ставка: ${LIMITS.MAX_BID_AMOUNT}`);
     }
 
     // === Проверка аукциона (без транзакции — просто чтение) ===
     const auction = await Auction.findById(auctionId).lean();
-    if (!auction) throw new Error('Аукцион не найден');
-    if (auction.status !== AuctionStatus.ACTIVE) {
-      throw new Error(`Аукцион не активен (статус: ${auction.status})`);
-    }
+      if (!auction) throw new Error('Аукцион не найден');
+      if (auction.status !== AuctionStatus.ACTIVE) {
+        throw new Error(`Аукцион не активен (статус: ${auction.status})`);
+      }
 
-    const currentRound = auction.rounds[auction.currentRound];
-    if (!currentRound || currentRound.status !== 'active') {
-      throw new Error('Нет активного раунда');
-    }
+      const currentRound = auction.rounds[auction.currentRound];
+      if (!currentRound || currentRound.status !== 'active') {
+        throw new Error('Нет активного раунда');
+      }
 
     // EDGE CASE: Ставка на границе времени
     const timeToEnd = new Date(currentRound.endTime).getTime() - Date.now();
     if (timeToEnd <= LIMITS.MIN_TIME_BUFFER_MS) {
       throw new Error('Раунд завершается, попробуйте позже');
-    }
+      }
 
-    if (amount < auction.startingPrice) {
-      throw new Error(`Минимальная ставка: ${auction.startingPrice}`);
-    }
+      if (amount < auction.startingPrice) {
+        throw new Error(`Минимальная ставка: ${auction.startingPrice}`);
+      }
 
     // === Проверяем существующую ставку ===
-    const existingBid = await Bid.findOne({
-      auctionId,
-      userId,
-      status: { $in: [BidStatus.ACTIVE, BidStatus.CARRIED_OVER] },
+      const existingBid = await Bid.findOne({
+        auctionId,
+        userId,
+        status: { $in: [BidStatus.ACTIVE, BidStatus.CARRIED_OVER] },
     }).lean();
 
     let result: PlaceBidResult;
 
     let bidResult: { bid: IBidDocument; isNewBid: boolean; previousAmount?: number };
 
-    if (existingBid) {
+      if (existingBid) {
       // === ПОВЫШЕНИЕ СТАВКИ ===
       bidResult = await this.increaseBid(
         auctionId, userId, amount, existingBid, auction.minBidIncrement
       );
-    } else {
+      } else {
       // === НОВАЯ СТАВКА ===
       bidResult = await this.createNewBid(auctionId, userId, amount, auction.currentRound);
     }
@@ -100,12 +100,12 @@ export class BidService {
     redisService.invalidateAuctionCache(auctionId.toString()).catch(() => {});
 
     // Anti-sniping (отдельная атомарная операция)
-    let roundExtended = false;
-    try {
-      roundExtended = await auctionService.extendRoundTime(auctionId);
-    } catch (err) {
-      logger.warn('Ошибка anti-snipe', { error: err });
-    }
+      let roundExtended = false;
+      try {
+        roundExtended = await auctionService.extendRoundTime(auctionId);
+      } catch (err) {
+        logger.warn('Ошибка anti-snipe', { error: err });
+      }
 
     return { ...bidResult, roundExtended };
   }
@@ -297,18 +297,18 @@ export class BidService {
         .select('currentRound rounds status')
         .lean();
       
-      if (!auction || auction.status !== AuctionStatus.ACTIVE) return null;
+    if (!auction || auction.status !== AuctionStatus.ACTIVE) return null;
 
-      const currentRound = auction.rounds[auction.currentRound];
-      if (!currentRound) return null;
+    const currentRound = auction.rounds[auction.currentRound];
+    if (!currentRound) return null;
 
-      const itemsInRound = currentRound.itemsToDistribute;
+    const itemsInRound = currentRound.itemsToDistribute;
 
       const bids = await Bid.find({
-        auctionId,
-        status: { $in: [BidStatus.ACTIVE, BidStatus.CARRIED_OVER] },
-      })
-        .sort({ amount: -1, createdAt: 1 })
+      auctionId,
+      status: { $in: [BidStatus.ACTIVE, BidStatus.CARRIED_OVER] },
+    })
+      .sort({ amount: -1, createdAt: 1 })
         .limit(itemsInRound)
         .select('amount')
         .lean();
@@ -327,31 +327,31 @@ export class BidService {
     refunded: number;
   }> {
     const auction = await Auction.findById(auctionId);
-    if (!auction) throw new Error('Аукцион не найден');
+      if (!auction) throw new Error('Аукцион не найден');
 
-    const currentRound = auction.rounds[auction.currentRound];
+      const currentRound = auction.rounds[auction.currentRound];
     if (!currentRound) throw new Error('Нет текущего раунда');
 
-    const itemsToDistribute = currentRound.itemsToDistribute;
+      const itemsToDistribute = currentRound.itemsToDistribute;
     const isLastRound = auction.currentRound >= auction.rounds.length - 1;
 
     // Получаем все активные ставки отсортированные
-    const allBids = await Bid.find({
-      auctionId,
-      status: { $in: [BidStatus.ACTIVE, BidStatus.CARRIED_OVER] },
+      const allBids = await Bid.find({
+        auctionId,
+        status: { $in: [BidStatus.ACTIVE, BidStatus.CARRIED_OVER] },
     }).sort({ amount: -1, createdAt: 1 });
 
     const winners: Types.ObjectId[] = [];
     const winnersData: Array<{ oderId: Types.ObjectId; amount: number; itemNumber: number }> = [];
-    let carriedOver = 0;
-    let refunded = 0;
+      let carriedOver = 0;
+      let refunded = 0;
 
     // Batch операции для User
     const userUpdates: Array<{ oderId: Types.ObjectId; balanceDelta: number; lockedDelta: number }> = [];
     const bidUpdates: Array<{ id: Types.ObjectId; status: BidStatus; itemNumber?: number }> = [];
 
-    for (let i = 0; i < allBids.length; i++) {
-      const bid = allBids[i];
+      for (let i = 0; i < allBids.length; i++) {
+        const bid = allBids[i];
       const isWinner = i < itemsToDistribute;
 
       if (isWinner) {
@@ -366,9 +366,9 @@ export class BidService {
           lockedDelta: -bid.amount,
         });
         bidUpdates.push({ id: bid._id as Types.ObjectId, status: BidStatus.WON, itemNumber });
-        
+
         logger.info(`Победитель: user=${bid.userId}, item=#${itemNumber}, amount=${bid.amount}`);
-      } else if (isLastRound) {
+        } else if (isLastRound) {
         // Последний раунд — возврат проигравшим
         userUpdates.push({
           oderId: bid.userId,
@@ -376,13 +376,13 @@ export class BidService {
           lockedDelta: -bid.amount,
         });
         bidUpdates.push({ id: bid._id as Types.ObjectId, status: BidStatus.REFUNDED });
-        refunded++;
-      } else {
+          refunded++;
+        } else {
         // Не последний раунд — переносим в следующий
         bidUpdates.push({ id: bid._id as Types.ObjectId, status: BidStatus.CARRIED_OVER });
-        carriedOver++;
+          carriedOver++;
+        }
       }
-    }
 
     // Выполняем batch обновления User
     const userBulkOps = userUpdates.map(u => ({
@@ -421,7 +421,7 @@ export class BidService {
     // Логируем транзакции асинхронно
     this.logWinnerTransactions(winnersData, auctionId).catch(() => {});
 
-    return { winners, carriedOver, refunded };
+      return { winners, carriedOver, refunded };
   }
 
   private async logWinnerTransactions(
@@ -432,7 +432,7 @@ export class BidService {
       userId: w.oderId,
       type: TransactionType.WIN_CHARGE,
       amount: w.amount,
-      auctionId,
+        auctionId,
       description: `Выигрыш предмета #${w.itemNumber}`,
     }));
 
@@ -449,7 +449,7 @@ export class BidService {
       .sort({ itemNumber: 1 })
       .populate('userId', 'username')
       .lean();
-  }
+    }
 
   /**
    * История ставок пользователя с пагинацией

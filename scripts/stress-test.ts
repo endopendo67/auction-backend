@@ -37,7 +37,7 @@ class StressTester {
 
   async initialize(): Promise<void> {
     console.log('\n🚀 Инициализация стресс-теста\n');
-
+    
     await mongoose.connect(config.mongodb.uri, {
       maxPoolSize: 200,
       serverSelectionTimeoutMS: 30000,
@@ -215,7 +215,7 @@ class StressTester {
     const avg = this.metrics.latencies.length > 0
       ? Math.round(this.metrics.latencies.reduce((a, b) => a + b, 0) / this.metrics.latencies.length)
       : 0;
-    
+
     console.log(
       `Ставки: ${this.metrics.success} | ` +
       `Ошибки: ${this.metrics.errors} | ` +

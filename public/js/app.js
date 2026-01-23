@@ -99,6 +99,8 @@ const el = {
 };
 
 // API клиент
+const API_BASE = window.API_BASE_URL || '';
+
 const api = {
   async request(endpoint, options = {}) {
     const config = {
@@ -111,7 +113,8 @@ const api = {
       config.body = JSON.stringify(config.body);
     }
 
-    const response = await fetch(`/api${endpoint}`, config);
+    const url = `${API_BASE}/api${endpoint}`;
+    const response = await fetch(url, config);
     const data = await response.json();
 
     if (!response.ok) {
@@ -953,7 +956,7 @@ async function handleCreateAuction(e) {
     if (enableBotSimulation) {
       notify(t('create.success') + ' Боты активированы!', 'success');
     } else {
-      notify(t('create.success'), 'success');
+    notify(t('create.success'), 'success');
     }
   } catch (err) {
     notify(err.message || t('create.error'), 'error');
@@ -965,7 +968,11 @@ async function handleCreateAuction(e) {
 // =====================
 
 function initSocket() {
-  state.socket = io({ transports: ['websocket', 'polling'] });
+  const socketUrl = API_BASE || window.location.origin;
+  state.socket = io(socketUrl, { 
+    transports: ['websocket', 'polling'],
+    path: '/socket.io'
+  });
 
   state.socket.on('connect', () => {
     console.log('WS connected');
@@ -1092,9 +1099,9 @@ async function handleLanguageChange() {
 
 async function init() {
   try {
-    // Загрузить переводы из API
-    await I18n.init();
-    el.langSelect.value = I18n.currentLocale;
+  // Загрузить переводы из API
+  await I18n.init();
+  el.langSelect.value = I18n.currentLocale;
   } catch (err) {
     console.warn('Не удалось загрузить переводы:', err);
   }

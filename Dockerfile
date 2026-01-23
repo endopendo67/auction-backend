@@ -1,21 +1,31 @@
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci
+
+COPY src ./src
+COPY tsconfig.json ./
+
+RUN npm run build
+
+# Production
 FROM node:20-alpine
 
 WORKDIR /app
 
-# Устанавливаем tsx глобально для запуска скриптов
 RUN npm install -g tsx
 
 COPY package*.json ./
+RUN npm ci --only=production
 
-# Устанавливаем все зависимости (включая dev для сборки)
-RUN npm ci
+COPY --from=builder /app/dist ./dist
+COPY scripts ./scripts
 
-COPY . .
+ENV NODE_ENV=production
+ENV PORT=3001
 
-# Собираем TypeScript
-RUN npm run build
+EXPOSE 3001
 
-EXPOSE 3000
-
-# tsx остаётся для запуска скриптов (bots, load-test, seed)
-CMD ["npm", "start"]
+CMD ["node", "dist/server.js"]

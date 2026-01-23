@@ -243,7 +243,7 @@ class SocketHandler {
     });
 
     // Мгновенно обновляем лидерборд (без throttle для real-time UX)
-    await this.broadcastLeaderboard(auctionId);
+      await this.broadcastLeaderboard(auctionId);
   }
 
   // Отправка лидерборда всем в комнате аукциона
