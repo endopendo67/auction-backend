@@ -26,6 +26,7 @@ interface AuctionSimulation {
   bots: ActiveBot[];
   interval: NodeJS.Timeout | null;
   isRunning: boolean;
+  totalSnipeCount: number; // Общий счётчик снайпов для всей симуляции
 }
 
 const BOT_NAMES = [
@@ -42,11 +43,11 @@ type BotPersonality = typeof BOT_PERSONALITIES[number];
 
 /**
  * Сервис симуляции ботов для тестирования аукционов.
- * Боты ставят ставки, перебивают друг друга и снайпят (макс 2 раза).
+ * Боты ставят ставки, перебивают друг друга и снайпят (макс 2 раза за всю симуляцию).
  */
 class BotSimulatorService {
   private simulations: Map<string, AuctionSimulation> = new Map();
-  private readonly MAX_SNIPES_PER_BOT = 2;
+  private readonly MAX_TOTAL_SNIPES = 2; // Общий лимит снайпов для всей симуляции
   private readonly SNIPE_THRESHOLD_MS = 30000; // 30 секунд до конца
 
   /**
@@ -71,6 +72,7 @@ class BotSimulatorService {
       bots,
       interval: null,
       isRunning: true,
+      totalSnipeCount: 0,
     };
 
     this.simulations.set(auctionId, simulation);
@@ -221,9 +223,9 @@ class BotSimulatorService {
         const isSnipeTime = timeRemaining <= this.SNIPE_THRESHOLD_MS && timeRemaining > 0;
 
         // Выбираем случайного бота для действия
-        const bot = this.selectBotForAction(simulation.bots, isSnipeTime);
+        const bot = this.selectBotForAction(simulation, isSnipeTime);
         if (bot) {
-          await this.botAction(simulation.auctionId, bot, isSnipeTime);
+          await this.botAction(simulation, bot, isSnipeTime);
         }
 
       } catch (err) {
@@ -244,22 +246,22 @@ class BotSimulatorService {
   /**
    * Выбор бота для действия
    */
-  private selectBotForAction(bots: ActiveBot[], isSnipeTime: boolean): ActiveBot | null {
+  private selectBotForAction(simulation: AuctionSimulation, isSnipeTime: boolean): ActiveBot | null {
     const now = Date.now();
-    const availableBots = bots.filter(bot => {
+    
+    // Если общий лимит снайпов исчерпан — не снайпим
+    const canSnipe = simulation.totalSnipeCount < this.MAX_TOTAL_SNIPES;
+    
+    const availableBots = simulation.bots.filter(bot => {
       // Бот должен "отдохнуть" после предыдущей ставки
       if (now - bot.lastBidTime < bot.config.thinkTimeMs) return false;
-      
-      // Если время снайпа — только боты которые ещё не исчерпали лимит
-      if (isSnipeTime && bot.snipeCount >= this.MAX_SNIPES_PER_BOT) return false;
-      
       return true;
     });
 
     if (availableBots.length === 0) return null;
 
-    // Случайный выбор с весом на снайперов в конце раунда
-    if (isSnipeTime) {
+    // Случайный выбор с весом на снайперов в конце раунда (только если лимит не исчерпан)
+    if (isSnipeTime && canSnipe) {
       const snipers = availableBots.filter(b => Math.random() < b.config.snipeChance);
       if (snipers.length > 0) {
         return snipers[Math.floor(Math.random() * snipers.length)];
@@ -272,9 +274,9 @@ class BotSimulatorService {
   /**
    * Действие бота — сделать ставку
    */
-  private async botAction(auctionId: string, bot: ActiveBot, isSnipeTime: boolean): Promise<void> {
+  private async botAction(simulation: AuctionSimulation, bot: ActiveBot, isSnipeTime: boolean): Promise<void> {
     try {
-      const auctionOid = new Types.ObjectId(auctionId);
+      const auctionOid = new Types.ObjectId(simulation.auctionId);
       
       // Получаем текущую ситуацию
       const [leaderboard, userBid, auction] = await Promise.all([
@@ -320,17 +322,19 @@ class BotSimulatorService {
       const result = await bidService.placeBid(auctionOid, bot.userId, newAmount);
       
       // МГНОВЕННО рассылаем через WebSocket всем клиентам
-      socketHandler.broadcastBidUpdate(auctionId, result.bid.toJSON());
+      socketHandler.broadcastBidUpdate(simulation.auctionId, result.bid.toJSON());
       
       // Если было продление времени — рассылаем
       if (result.roundExtended) {
-        socketHandler.broadcastTimeExtension(auctionId);
+        socketHandler.broadcastTimeExtension(simulation.auctionId);
       }
       
       bot.lastBidTime = Date.now();
-      if (isSnipeTime) {
-        bot.snipeCount++;
-        logger.debug(`🎯 ${bot.config.name} снайпнул! (${bot.snipeCount}/${this.MAX_SNIPES_PER_BOT})`);
+      
+      // Учитываем снайп в общем счётчике (макс 2 за всю симуляцию)
+      if (isSnipeTime && simulation.totalSnipeCount < this.MAX_TOTAL_SNIPES) {
+        simulation.totalSnipeCount++;
+        logger.info(`🎯 ${bot.config.name} снайпнул! (всего ${simulation.totalSnipeCount}/${this.MAX_TOTAL_SNIPES})`);
       }
 
       logger.debug(`🤖 ${bot.config.name} ставит ${newAmount}⭐ (было: ${currentBid})`);
