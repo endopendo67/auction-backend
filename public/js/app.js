@@ -834,9 +834,10 @@ async function handlePlaceBid() {
     const result = await api.placeBid(state.currentAuction.id, state.user.id, amount);
     
     el.bidAmount.value = '';
-    await updateBalance();
-    await loadUserStatus(state.currentAuction.id);
-    await loadLeaderboard(state.currentAuction.id);
+    
+    // Обновляем в фоне (не блокируем кнопку)
+    updateBalance();
+    loadUserStatus(state.currentAuction.id);
 
     const msg = result.data.isNewBid
       ? t('auction.bid_placed', { amount })
@@ -859,9 +860,9 @@ async function handleOutbid() {
     
     const result = await api.quickBid(state.currentAuction.id, state.user.id, 'outbid');
     
-    await updateBalance();
-    await loadUserStatus(state.currentAuction.id);
-    await loadLeaderboard(state.currentAuction.id);
+    // Обновляем в фоне (не блокируем кнопку)
+    updateBalance();
+    loadUserStatus(state.currentAuction.id);
     
     const amount = result.data.bid.amount;
     notify(result.data.roundExtended 
