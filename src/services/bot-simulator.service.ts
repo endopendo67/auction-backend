@@ -31,10 +31,10 @@ interface AuctionSimulation {
 const BOT_NAMES = [
   'Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon',
   'Zeta', 'Eta', 'Theta', 'Iota', 'Kappa',
-  'Lambda', 'Mu', 'Nu', 'Xi', 'Omicron',
-  'Pi', 'Rho', 'Sigma', 'Tau', 'Upsilon',
-  'Phoenix', 'Nova', 'Orion', 'Vega', 'Atlas',
-  'Titan', 'Nexus', 'Pulse', 'Storm', 'Blaze',
+  'Lambda', 'Omega', 'Nova', 'Orion', 'Vega',
+  'Atlas', 'Titan', 'Nexus', 'Pulse', 'Storm',
+  'Blaze', 'Cyber', 'Flash', 'Spark', 'Turbo',
+  'Nitro', 'Rapid', 'Swift', 'Hyper', 'Ultra',
 ];
 
 const BOT_PERSONALITIES = ['aggressive', 'cautious', 'sniper', 'random'] as const;
