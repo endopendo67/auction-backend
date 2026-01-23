@@ -46,12 +46,16 @@ export function createApp(): Application {
     next();
   });
 
-  // API routes
+  // Статика
+  app.use(express.static(path.join(__dirname, '../public')));
+
+  // API
   app.use('/api', apiRoutes);
 
-  // Health check endpoint
-  app.get('/health', (req, res) => {
-    res.json({ status: 'ok', timestamp: Date.now() });
+  // SPA fallback
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api')) return next();
+    res.sendFile(path.join(__dirname, '../public/index.html'));
   });
 
   // Обработка ошибок

@@ -99,8 +99,6 @@ const el = {
 };
 
 // API клиент
-const API_BASE = window.API_BASE_URL || '';
-
 const api = {
   async request(endpoint, options = {}) {
     const config = {
@@ -113,8 +111,7 @@ const api = {
       config.body = JSON.stringify(config.body);
     }
 
-    const url = `${API_BASE}/api${endpoint}`;
-    const response = await fetch(url, config);
+    const response = await fetch(`/api${endpoint}`, config);
     const data = await response.json();
 
     if (!response.ok) {
@@ -202,14 +199,25 @@ function formatTime(ms) {
 
 // Показать/скрыть секции
 function showSection(section) {
-  [el.authSection, el.userPanel, el.auctionsSection, el.auctionDetail, el.createAuctionSection]
-    .forEach(s => s.classList.add('hidden'));
+  // Скрываем ВСЕ секции
+  [
+    el.authSection, 
+    el.auctionsSection, 
+    el.auctionDetail, 
+    el.createAuctionSection,
+    el.historySection,
+    el.itemsSection
+  ].forEach(s => s?.classList.add('hidden'));
   
+  // Показываем userPanel если авторизован
   if (state.user) {
-    el.userPanel.classList.remove('hidden');
+    el.userPanel?.classList.remove('hidden');
+  } else {
+    el.userPanel?.classList.add('hidden');
   }
   
-  section.classList.remove('hidden');
+  // Показываем нужную секцию
+  section?.classList.remove('hidden');
 }
 
 // =====================
@@ -383,16 +391,12 @@ function updateHistoryPagination() {
 }
 
 function showHistory() {
-  el.auctionsSection.classList.add('hidden');
-  el.auctionDetail.classList.add('hidden');
-  el.createAuctionSection.classList.add('hidden');
-  el.historySection.classList.remove('hidden');
+  showSection(el.historySection);
   loadHistory(1);
 }
 
 function hideHistory() {
-  el.historySection.classList.add('hidden');
-  el.auctionsSection.classList.remove('hidden');
+  showSection(el.auctionsSection);
 }
 
 // ==================== ПРЕДМЕТЫ ====================
@@ -464,17 +468,12 @@ function updateItemsPagination() {
 }
 
 function showItems() {
-  el.auctionsSection.classList.add('hidden');
-  el.auctionDetail.classList.add('hidden');
-  el.createAuctionSection.classList.add('hidden');
-  el.historySection.classList.add('hidden');
-  el.itemsSection.classList.remove('hidden');
+  showSection(el.itemsSection);
   loadItems(1);
 }
 
 function hideItems() {
-  el.itemsSection.classList.add('hidden');
-  el.auctionsSection.classList.remove('hidden');
+  showSection(el.auctionsSection);
 }
 
 // ==================== АУКЦИОНЫ ====================
@@ -968,11 +967,7 @@ async function handleCreateAuction(e) {
 // =====================
 
 function initSocket() {
-  const socketUrl = API_BASE || window.location.origin;
-  state.socket = io(socketUrl, { 
-    transports: ['websocket', 'polling'],
-    path: '/socket.io'
-  });
+  state.socket = io({ transports: ['websocket', 'polling'] });
 
   state.socket.on('connect', () => {
     console.log('WS connected');
