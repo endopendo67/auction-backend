@@ -14,12 +14,12 @@ class RedisService {
   private subscriber: Redis | null = null;
   private isConnected = false;
 
-  // TTL для разных типов кэша (в секундах) — оптимизировано для высокой нагрузки
+  // TTL для разных типов кэша — минимальный для real-time
   private readonly TTL = {
-    LEADERBOARD: 1,      // Лидерборд — 1 секунда (real-time важнее)
-    MIN_BID: 1,          // Минимальная ставка — 1 секунда
-    AUCTION: 10,         // Данные аукциона — 10 секунд
-    USER_POSITION: 1,    // Позиция пользователя — 1 секунда
+    LEADERBOARD: 0.5,    // Лидерборд — 500ms
+    MIN_BID: 0.5,        // Минимальная ставка — 500ms
+    AUCTION: 5,          // Данные аукциона — 5 секунд
+    USER_POSITION: 0.5,  // Позиция пользователя — 500ms
   };
 
   async connect(): Promise<void> {

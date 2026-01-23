@@ -11,6 +11,10 @@ export const config = {
   
   mongodb: {
     uri: process.env.MONGODB_URI || 'mongodb://localhost:27017/auction_db',
+    // Оптимизация для высокой нагрузки
+    poolSize: parseInt(process.env.MONGODB_POOL_SIZE || '100', 10),
+    socketTimeoutMS: 30000,
+    serverSelectionTimeoutMS: 5000,
   },
   
   redis: {
@@ -25,15 +29,14 @@ export const config = {
   },
   
   bid: {
-    // Rate limiting: 0 = отключено
-    rateLimitRequests: parseInt(process.env.BID_RATE_LIMIT_REQUESTS || '0', 10),
-    rateLimitWindowSec: parseInt(process.env.BID_RATE_LIMIT_WINDOW_SEC || '5', 10),
-    // Retry при WriteConflict
-    maxRetryAttempts: parseInt(process.env.BID_MAX_RETRY_ATTEMPTS || '10', 10),
+    // Rate limiting: 0 = отключено для максимальной скорости
+    rateLimitRequests: 0,
+    rateLimitWindowSec: 5,
+    maxRetryAttempts: 3,
   },
   
   logging: {
-    level: process.env.LOG_LEVEL || 'debug',
+    level: process.env.LOG_LEVEL || 'warn', // Меньше логов = выше скорость
   },
 } as const;
 

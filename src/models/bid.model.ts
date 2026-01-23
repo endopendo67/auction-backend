@@ -78,15 +78,42 @@ const bidSchema = new Schema<IBidDocument>(
   }
 );
 
-// Индексы для быстрого поиска
-// Основной индекс для лидерборда (amount DESC, createdAt ASC)
-bidSchema.index({ auctionId: 1, status: 1, amount: -1, createdAt: 1 });
-// Поиск ставки пользователя
-bidSchema.index({ auctionId: 1, userId: 1, status: 1 });
+// ОПТИМИЗИРОВАННЫЕ ИНДЕКСЫ для максимальной скорости
+
+// Лидерборд — главный индекс (covered query)
+bidSchema.index(
+  { auctionId: 1, status: 1, amount: -1, createdAt: 1 },
+  { background: true }
+);
+
+// Топ ставка (для быстрого получения максимума)
+bidSchema.index(
+  { auctionId: 1, amount: -1 },
+  { background: true }
+);
+
+// Поиск ставки пользователя — partial index только для активных
+bidSchema.index(
+  { auctionId: 1, userId: 1 },
+  { 
+    background: true,
+    partialFilterExpression: { 
+      status: { $in: ['active', 'carried_over'] } 
+    }
+  }
+);
+
 // История пользователя
-bidSchema.index({ userId: 1, createdAt: -1 });
-// Подсчёт ставок по аукциону
-bidSchema.index({ auctionId: 1, status: 1 });
+bidSchema.index({ userId: 1, createdAt: -1 }, { background: true });
+
+// Победители (для быстрого подсчёта)
+bidSchema.index(
+  { auctionId: 1, status: 1, itemNumber: 1 },
+  { 
+    background: true,
+    partialFilterExpression: { status: 'won' }
+  }
+);
 
 // Получить лидерборд по аукциону (оптимизировано с hint на индекс)
 bidSchema.statics.getLeaderboard = function (

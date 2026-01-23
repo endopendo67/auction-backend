@@ -14,9 +14,14 @@ export async function connectDatabase(): Promise<void> {
     mongoose.set('strictQuery', true);
 
     await mongoose.connect(config.mongodb.uri, {
-      maxPoolSize: 10,
+      maxPoolSize: 100,            // Увеличено с 10 до 100
+      minPoolSize: 10,             // Минимум 10 соединений
       serverSelectionTimeoutMS: 5000,
-      socketTimeoutMS: 45000,
+      socketTimeoutMS: 30000,
+      connectTimeoutMS: 10000,
+      maxIdleTimeMS: 30000,
+      // Оптимизация записи
+      writeConcern: { w: 1, j: false }, // Быстрая запись без fsync
     });
 
     isConnected = true;

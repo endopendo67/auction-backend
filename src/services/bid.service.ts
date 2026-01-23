@@ -53,34 +53,39 @@ export class BidService {
       throw new Error(`Максимальная ставка: ${LIMITS.MAX_BID_AMOUNT}`);
     }
 
-    // === Проверка аукциона (без транзакции — просто чтение) ===
-    const auction = await Auction.findById(auctionId).lean();
-      if (!auction) throw new Error('Аукцион не найден');
-      if (auction.status !== AuctionStatus.ACTIVE) {
-        throw new Error(`Аукцион не активен (статус: ${auction.status})`);
-      }
+    // === Параллельная загрузка аукциона и существующей ставки ===
+    const [auction, existingBid] = await Promise.all([
+      Auction.findById(auctionId)
+        .select('status currentRound rounds startingPrice minBidIncrement')
+        .lean(),
+      Bid.findOne({
+        auctionId,
+        userId,
+        status: { $in: [BidStatus.ACTIVE, BidStatus.CARRIED_OVER] },
+      })
+        .select('_id amount')
+        .lean(),
+    ]);
 
-      const currentRound = auction.rounds[auction.currentRound];
-      if (!currentRound || currentRound.status !== 'active') {
-        throw new Error('Нет активного раунда');
-      }
+    if (!auction) throw new Error('Аукцион не найден');
+    if (auction.status !== AuctionStatus.ACTIVE) {
+      throw new Error(`Аукцион не активен`);
+    }
+
+    const currentRound = auction.rounds[auction.currentRound];
+    if (!currentRound || currentRound.status !== 'active') {
+      throw new Error('Нет активного раунда');
+    }
 
     // EDGE CASE: Ставка на границе времени
     const timeToEnd = new Date(currentRound.endTime).getTime() - Date.now();
     if (timeToEnd <= LIMITS.MIN_TIME_BUFFER_MS) {
-      throw new Error('Раунд завершается, попробуйте позже');
-      }
+      throw new Error('Раунд завершается');
+    }
 
-      if (amount < auction.startingPrice) {
-        throw new Error(`Минимальная ставка: ${auction.startingPrice}`);
-      }
-
-    // === Проверяем существующую ставку ===
-      const existingBid = await Bid.findOne({
-        auctionId,
-        userId,
-        status: { $in: [BidStatus.ACTIVE, BidStatus.CARRIED_OVER] },
-    }).lean();
+    if (amount < auction.startingPrice) {
+      throw new Error(`Минимальная ставка: ${auction.startingPrice}`);
+    }
 
     let result: PlaceBidResult;
 

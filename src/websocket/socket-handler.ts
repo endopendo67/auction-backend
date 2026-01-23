@@ -27,11 +27,14 @@ class SocketHandler {
         origin: '*',
         methods: ['GET', 'POST'],
       },
-      pingTimeout: 60000,
-      pingInterval: 25000,
-      // Оптимизация для большого числа подключений
-      perMessageDeflate: false, // Отключаем сжатие (экономит CPU)
-      maxHttpBufferSize: 1e6, // 1MB макс размер сообщения
+      // Оптимизация для максимальной пропускной способности
+      pingTimeout: 30000,
+      pingInterval: 10000,
+      perMessageDeflate: false,      // Без сжатия = меньше CPU
+      maxHttpBufferSize: 512 * 1024, // 512KB достаточно
+      transports: ['websocket'],     // Только WebSocket (без polling)
+      allowUpgrades: false,          // Без апгрейда с polling
+      httpCompression: false,        // Без HTTP сжатия
     });
 
     this.io.on('connection', (socket) => this.handleConnection(socket));

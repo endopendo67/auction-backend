@@ -1,10 +1,10 @@
 /**
  * СТРЕСС-ТЕСТ СИСТЕМЫ АУКЦИОНОВ
  * 
- * ОПТИМИЗИРОВАННАЯ ВЕРСИЯ:
- * - Умное перебивание с актуальными данными
- * - Контролируемый параллелизм
- * - Агрессивное повышение ставок
+ * МАКСИМАЛЬНАЯ ОПТИМИЗАЦИЯ:
+ * - Высокий параллелизм
+ * - Connection pooling
+ * - Агрессивное перебивание
  * 
  * Использование: npx tsx scripts/stress-test.ts
  */
@@ -21,19 +21,20 @@ const CONFIG = {
   roundDurationSec: 30,
   totalBots: 6000,
   initialBalance: 100000,
-  // Оптимизированные параметры
-  concurrentRequests: 50,
-  requestDelayMs: 20,
-  // Локальный адрес для работы внутри Docker
+  // МАКСИМАЛЬНАЯ ПРОИЗВОДИТЕЛЬНОСТЬ
+  concurrentRequests: 200,   // Высокий параллелизм
+  requestDelayMs: 5,         // Минимальная задержка
   apiHost: 'localhost',
   apiPort: 80,
 };
 
-// HTTP агент с connection pooling (локально без HTTPS)
+// HTTP агент с максимальным connection pooling
 const agent = new http.Agent({ 
   keepAlive: true, 
-  maxSockets: 100,
-  keepAliveMsecs: 10000,
+  maxSockets: 500,           // Много соединений
+  maxFreeSockets: 100,
+  keepAliveMsecs: 5000,
+  scheduling: 'fifo',
 });
 
 interface Bot {
@@ -55,29 +56,27 @@ class StressTester {
   private isRunning = false;
   private topBid = 100;
   private minIncrement = 10;
-  private activeRequests = 0;
 
   async initialize(): Promise<void> {
-    console.log('\n🚀 Инициализация стресс-теста\n');
+    console.log('\n🚀 СТРЕСС-ТЕСТ (MAX PERFORMANCE)\n');
     console.log(`API: http://${CONFIG.apiHost}:${CONFIG.apiPort}`);
-    console.log(`Параллельных запросов: ${CONFIG.concurrentRequests}`);
+    console.log(`Параллельность: ${CONFIG.concurrentRequests}`);
     
     await mongoose.connect(config.mongodb.uri, {
-      maxPoolSize: 100,
-      serverSelectionTimeoutMS: 30000,
+      maxPoolSize: 200,
+      minPoolSize: 50,
+      serverSelectionTimeoutMS: 10000,
     });
 
     await redisService.connect();
 
-    // Очистка старых данных
     console.log('Очистка...');
-    await User.deleteMany({ username: /^stress_/ });
-    await Auction.deleteMany({ title: /^STRESS/ });
+    await Promise.all([
+      User.deleteMany({ username: /^stress_/ }),
+      Auction.deleteMany({ title: /^STRESS/ }),
+    ]);
 
-    // Создание аукциона
     await this.createAuction();
-
-    // Создание ботов
     await this.createBots();
 
     console.log('✓ Готово\n');
@@ -106,12 +105,12 @@ class StressTester {
 
     const auction = await auctionService.createAuction({
       title: `STRESS TEST ${Date.now()}`,
-      description: `${CONFIG.totalItems} товаров, ${CONFIG.totalBots} ботов`,
+      description: `MAX LOAD TEST`,
       totalItems: CONFIG.totalItems,
       startingPrice: 100,
       minBidIncrement: 10,
       roundsConfig,
-      startTime: new Date(Date.now() + 5000),
+      startTime: new Date(Date.now() + 3000), // Быстрый старт
       createdBy: admin._id as Types.ObjectId,
     });
 
@@ -120,57 +119,57 @@ class StressTester {
     this.minIncrement = auction.minBidIncrement || 10;
     this.topBid = auction.startingPrice;
     
-    console.log(`✓ Аукцион: ${CONFIG.totalItems} товаров, ${CONFIG.rounds} раундов`);
-    console.log(`  ID: ${this.auctionIdStr}`);
+    console.log(`✓ Аукцион: ${CONFIG.totalItems} товаров, ID: ${this.auctionIdStr}`);
   }
 
   private async createBots(): Promise<void> {
     console.log(`Создание ${CONFIG.totalBots} ботов...`);
-    const batchSize = 1000;
+    
+    // Создаём большими батчами параллельно
+    const batchSize = 2000;
+    const batches: Promise<Bot[]>[] = [];
 
     for (let i = 0; i < CONFIG.totalBots; i += batchSize) {
-      const batch = [];
       const end = Math.min(i + batchSize, CONFIG.totalBots);
-
-      for (let j = i; j < end; j++) {
-        batch.push({
-          username: `stress_${j}`,
-          balance: CONFIG.initialBalance,
-          lockedBalance: 0,
-          isBot: true,
-        });
-      }
-
-      const inserted = await User.insertMany(batch, { ordered: false });
-      this.bots.push(...inserted.map(u => ({ 
-        id: u._id as Types.ObjectId, 
-        username: u.username,
-        currentBid: 0,
-      })));
-
-      process.stdout.write(`\r  ${this.bots.length}/${CONFIG.totalBots}`);
+      batches.push(this.createBotBatch(i, end));
     }
 
-    console.log('\n✓ Боты созданы');
+    const results = await Promise.all(batches);
+    this.bots = results.flat();
+    
+    console.log(`✓ ${this.bots.length} ботов созданы`);
+  }
+
+  private async createBotBatch(start: number, end: number): Promise<Bot[]> {
+    const batch = [];
+    for (let j = start; j < end; j++) {
+      batch.push({
+        username: `stress_${j}`,
+        balance: CONFIG.initialBalance,
+        lockedBalance: 0,
+        isBot: true,
+      });
+    }
+
+    const inserted = await User.insertMany(batch, { ordered: false });
+    return inserted.map(u => ({ 
+      id: u._id as Types.ObjectId, 
+      username: u.username,
+      currentBid: 0,
+    }));
   }
 
   async run(): Promise<void> {
-    console.log('\n═'.repeat(50));
-    console.log('  СТРЕСС-ТЕСТ (Оптимизированный)');
     console.log('═'.repeat(50));
-    console.log(`  Товаров: ${CONFIG.totalItems}`);
-    console.log(`  Раундов: ${CONFIG.rounds} × ${CONFIG.roundDurationSec}с`);
-    console.log(`  Ботов: ${CONFIG.totalBots}`);
-    console.log(`  Параллельность: ${CONFIG.concurrentRequests}`);
+    console.log(`  СТАРТ: ${CONFIG.concurrentRequests} RPS target`);
     console.log('═'.repeat(50) + '\n');
 
-    // Ждём старта
     const auction = await Auction.findById(this.auctionId);
     if (auction?.status === AuctionStatus.PENDING) {
       const wait = auction.startTime.getTime() - Date.now();
       if (wait > 0) {
-        console.log(`Ожидание старта: ${Math.ceil(wait / 1000)}с...`);
-        await new Promise(r => setTimeout(r, wait + 500));
+        console.log(`Ожидание: ${Math.ceil(wait / 1000)}с...`);
+        await new Promise(r => setTimeout(r, wait + 200));
       }
       
       try {
@@ -178,59 +177,53 @@ class StressTester {
         console.log('✓ Аукцион запущен\n');
       } catch {
         await auctionService.startAuction(this.auctionId);
-        console.log('✓ Аукцион запущен напрямую\n');
       }
     }
 
     this.isRunning = true;
+    const monitor = setInterval(() => this.printStatus(), 2000);
 
-    // Мониторинг
-    const monitor = setInterval(() => this.printStatus(), 3000);
-
-    // Основной цикл — контролируемый параллелизм
+    // Главный цикл — максимальный параллелизм
     while (this.isRunning) {
-      // Проверяем статус аукциона
-      const auctionCheck = await Auction.findById(this.auctionId).select('status').lean();
+      const auctionCheck = await Auction.findById(this.auctionId)
+        .select('status')
+        .lean();
+        
       if (auctionCheck?.status !== AuctionStatus.ACTIVE) {
         this.isRunning = false;
         break;
       }
 
-      // Обновляем topBid из базы
+      // Обновляем topBid
       const topBidDoc = await Bid.findOne({ auctionId: this.auctionId })
         .sort({ amount: -1 })
         .select('amount')
         .lean();
       if (topBidDoc) this.topBid = topBidDoc.amount;
 
-      // Запускаем пачку конкурентных запросов
+      // Запускаем пачку запросов
       const batch: Promise<void>[] = [];
-      for (let i = 0; i < CONFIG.concurrentRequests && this.isRunning; i++) {
+      for (let i = 0; i < CONFIG.concurrentRequests; i++) {
         const bot = this.bots[Math.floor(Math.random() * this.bots.length)];
         batch.push(this.makeBid(bot));
       }
 
       await Promise.allSettled(batch);
-      
-      // Небольшая пауза между пачками
       await new Promise(r => setTimeout(r, CONFIG.requestDelayMs));
     }
 
     clearInterval(monitor);
-    console.log('\n✓ Тест завершён\n');
+    console.log('\n✓ Завершено\n');
   }
 
-  /**
-   * Умная ставка — ВСЕГДА перебивает топ
-   */
   private async makeBid(bot: Bot): Promise<void> {
     const start = performance.now();
     this.metrics.bids++;
 
     try {
-      // ВСЕГДА перебиваем топ на случайную сумму
-      const jumpMultiplier = 1 + Math.floor(Math.random() * 5); // 1-5x минимального шага
-      const amount = this.topBid + (this.minIncrement * jumpMultiplier);
+      // Агрессивное перебивание: +10-50 от текущего топа
+      const jump = this.minIncrement * (1 + Math.floor(Math.random() * 5));
+      const amount = this.topBid + jump;
 
       const response = await this.callApi('POST', `/api/auctions/${this.auctionIdStr}/bid`, {
         userId: bot.id.toString(),
@@ -238,23 +231,16 @@ class StressTester {
       });
 
       if (response.success) {
-        // Обновляем topBid из ответа если есть
-        if (response.data?.bid?.amount) {
-          const newAmount = response.data.bid.amount;
-          if (newAmount > this.topBid) {
-            this.topBid = newAmount;
-          }
+        if (response.data?.bid?.amount > this.topBid) {
+          this.topBid = response.data.bid.amount;
         }
-        
-        bot.currentBid = amount;
         
         const latency = performance.now() - start;
         this.metrics.success++;
         this.metrics.latencies.push(latency);
 
-        // Держим только последние 500 для памяти
-        if (this.metrics.latencies.length > 500) {
-          this.metrics.latencies = this.metrics.latencies.slice(-500);
+        if (this.metrics.latencies.length > 300) {
+          this.metrics.latencies = this.metrics.latencies.slice(-300);
         }
       } else {
         this.metrics.errors++;
@@ -264,14 +250,11 @@ class StressTester {
     }
   }
 
-  /**
-   * HTTPS API вызов
-   */
   private callApi(method: string, path: string, body: object): Promise<any> {
     return new Promise((resolve, reject) => {
       const data = JSON.stringify(body);
 
-      const options: http.RequestOptions = {
+      const req = http.request({
         hostname: CONFIG.apiHost,
         port: CONFIG.apiPort,
         path,
@@ -281,10 +264,8 @@ class StressTester {
           'Content-Type': 'application/json',
           'Content-Length': Buffer.byteLength(data),
         },
-        timeout: 10000,
-      };
-
-      const req = http.request(options, (res) => {
+        timeout: 5000,
+      }, (res) => {
         let body = '';
         res.on('data', chunk => body += chunk);
         res.on('end', () => {
@@ -312,22 +293,24 @@ class StressTester {
       ? Math.round(this.metrics.latencies.reduce((a, b) => a + b, 0) / this.metrics.latencies.length)
       : 0;
 
+    const p99 = this.metrics.latencies.length > 10
+      ? Math.round(this.metrics.latencies.sort((a, b) => b - a)[Math.floor(this.metrics.latencies.length * 0.01)])
+      : 0;
+
     const total = this.metrics.success + this.metrics.errors;
-    const successRate = total > 0 ? ((this.metrics.success / total) * 100).toFixed(0) : '0';
+    const rate = total > 0 ? ((this.metrics.success / total) * 100).toFixed(0) : '0';
 
     console.log(
-      `✓ ${this.metrics.success} | ` +
-      `✗ ${this.metrics.errors} | ` +
-      `Avg: ${avg}ms | ` +
-      `Top: ${this.topBid}⭐ | ` +
-      `Rate: ${successRate}%`
+      `✓${this.metrics.success} ✗${this.metrics.errors} | ` +
+      `Avg:${avg}ms P99:${p99}ms | ` +
+      `Top:${this.topBid}⭐ | ${rate}%`
     );
   }
 
   async verify(): Promise<void> {
     console.log('═'.repeat(50));
     console.log('  РЕЗУЛЬТАТЫ');
-    console.log('═'.repeat(50) + '\n');
+    console.log('═'.repeat(50));
 
     const [totalBids, wonBids] = await Promise.all([
       Bid.countDocuments({ auctionId: this.auctionId }),
@@ -335,11 +318,15 @@ class StressTester {
     ]);
 
     const total = this.metrics.success + this.metrics.errors;
+    const avg = this.metrics.latencies.length > 0
+      ? Math.round(this.metrics.latencies.reduce((a, b) => a + b, 0) / this.metrics.latencies.length)
+      : 0;
     
-    console.log(`Ставок в БД: ${totalBids}`);
+    console.log(`\nСтавок в БД: ${totalBids}`);
     console.log(`Победителей: ${wonBids}`);
     console.log(`API запросов: ${total}`);
     console.log(`Успешных: ${this.metrics.success} (${((this.metrics.success / total) * 100).toFixed(1)}%)`);
+    console.log(`Средняя задержка: ${avg}ms`);
     console.log('═'.repeat(50) + '\n');
   }
 
