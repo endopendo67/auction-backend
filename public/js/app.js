@@ -637,7 +637,9 @@ async function loadLeaderboard(auctionId, resetPage = true) {
   try {
     // Для завершённых аукционов показываем победителей
     if (state.currentAuction?.status === 'completed') {
+      console.log('Loading winners for completed auction:', auctionId);
       const result = await api.getWinners(auctionId);
+      console.log('Winners received:', result.data?.length || 0);
       renderWinners(result.data);
       el.leaderboardPagination?.classList.add('hidden');
     } else {
@@ -649,6 +651,7 @@ async function loadLeaderboard(auctionId, resetPage = true) {
       renderLeaderboardPage();
     }
   } catch (err) {
+    console.error('Error loading leaderboard:', err);
     el.leaderboardBody.innerHTML = `<tr><td colspan="3">${t('common.error')}</td></tr>`;
     el.leaderboardPagination?.classList.add('hidden');
   }
@@ -718,11 +721,16 @@ function changeLeaderboardPage(delta) {
 }
 
 function renderWinners(winners) {
+  console.log('renderWinners called with:', winners);
+  
   if (!winners || !winners.length) {
+    console.warn('No winners to display');
     el.leaderboardBody.innerHTML = `<tr><td colspan="3">${t('leaderboard.no_winners')}</td></tr>`;
     return;
   }
 
+  console.log('Rendering', winners.length, 'winners');
+  
   el.leaderboardBody.innerHTML = winners.map((winner) => {
     const isYou = state.user && winner.username === state.user.username;
     const classes = ['winning', isYou ? 'you' : ''].filter(Boolean).join(' ');
