@@ -199,6 +199,7 @@ export const auctionController = {
         position: index + 1,
         amount: bid.amount,
         username: (bid.userId as any).username,
+        oduserId: (bid.userId as any)._id?.toString(),  // Для поиска позиции пользователя
         status: bid.status,
         createdAt: bid.createdAt,
       })),

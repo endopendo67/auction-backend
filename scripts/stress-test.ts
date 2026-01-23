@@ -21,8 +21,7 @@ const CONFIG = {
   roundDurationSec: 30,
   totalBots: 6000,
   initialBalance: 100000,
-  // МАКСИМАЛЬНАЯ ПРОИЗВОДИТЕЛЬНОСТЬ
-  concurrentRequests: 200,   // Высокий параллелизм
+  concurrentRequests: 300,   // Высокий параллелизм
   requestDelayMs: 5,         // Минимальная задержка
   apiHost: 'localhost',
   apiPort: 80,

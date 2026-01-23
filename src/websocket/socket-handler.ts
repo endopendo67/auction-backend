@@ -125,12 +125,14 @@ class SocketHandler {
       });
 
       // Сразу отправляем лидерборд клиенту (до 500 записей для пагинации)
+      // Включаем oduserId чтобы фронт мог найти свою позицию БЕЗ HTTP запросов
       socket.emit('auction:leaderboard', {
         auctionId,
         leaderboard: leaderboard.map((bid, index) => ({
           position: index + 1,
           amount: bid.amount,
           username: (bid.userId as any)?.username || 'Unknown',
+          oduserId: (bid.userId as any)?._id?.toString() || (bid.userId as any)?.toString(),
           status: bid.status,
         })),
       });
@@ -183,6 +185,7 @@ class SocketHandler {
           position: index + 1,
           amount: bid.amount,
           username: (bid.userId as any)?.username || 'Unknown',
+          oduserId: (bid.userId as any)?._id?.toString() || (bid.userId as any)?.toString(),
           status: bid.status,
         })),
       });
@@ -309,12 +312,14 @@ class SocketHandler {
     try {
       const leaderboard = await bidService.getLeaderboard(new Types.ObjectId(auctionId), 500);
       
+      // Включаем oduserId чтобы фронт мог найти позицию пользователя БЕЗ HTTP
       this.io.to(`auction:${auctionId}`).emit('auction:leaderboard', {
         auctionId,
         leaderboard: leaderboard.map((bid, index) => ({
           position: index + 1,
           amount: bid.amount,
           username: (bid.userId as any)?.username || 'Unknown',
+          oduserId: (bid.userId as any)?._id?.toString() || (bid.userId as any)?.toString(),
           status: bid.status,
         })),
       });

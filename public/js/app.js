@@ -630,7 +630,8 @@ async function loadAuctionDetail(auctionId) {
   }
   
   await loadLeaderboard(auctionId);
-  await loadUserStatus(auctionId);
+  // Статус пользователя обновляется автоматически из лидерборда
+  updateUserStatusFromLeaderboard();
 }
 
 async function loadLeaderboard(auctionId, resetPage = true) {
@@ -645,10 +646,15 @@ async function loadLeaderboard(auctionId, resetPage = true) {
     } else {
       // Загружаем больше данных для пагинации (до 500)
       const result = await api.getLeaderboard(auctionId, 500);
-      leaderboardData = result.data || [];
+      leaderboardData = (result.data || []).map(b => ({
+        ...b,
+        oduserId: b.oduserId,  // Сохраняем userId для поиска своей позиции
+      }));
       leaderboardTotalPages = Math.ceil(leaderboardData.length / LEADERBOARD_PER_PAGE);
       if (resetPage) leaderboardPage = 1;
       renderLeaderboardPage();
+      // Обновляем статус пользователя из лидерборда (БЕЗ HTTP!)
+      updateUserStatusFromLeaderboard();
     }
   } catch (err) {
     console.error('Error loading leaderboard:', err);
@@ -791,40 +797,26 @@ function renderWinners(winners) {
   updateLeaderboardPagination();
 }
 
-// Debounce для loadUserStatus — не чаще чем раз в 100ms
-let userStatusTimeout = null;
-let userStatusPending = false;
-
-async function loadUserStatus(auctionId) {
-  if (!state.user) return;
-
-  // Debounce: если уже запланирован запрос — просто отметим что нужен ещё один
-  if (userStatusTimeout) {
-    userStatusPending = true;
+/**
+ * Обновление статуса пользователя из данных лидерборда
+ * БЕЗ HTTP ЗАПРОСОВ — всё вычисляется из WebSocket данных!
+ */
+function updateUserStatusFromLeaderboard() {
+  if (!state.user || !leaderboardData.length) {
+    el.yourBid.textContent = t('auction.not_placed');
+    el.yourPosition.textContent = '—';
     return;
   }
 
-  userStatusTimeout = setTimeout(() => {
-    userStatusTimeout = null;
-    if (userStatusPending) {
-      userStatusPending = false;
-      loadUserStatus(auctionId);
-    }
-  }, 100);
-
-  try {
-    const result = await api.getUserBidStatus(auctionId, state.user.id);
-    const s = result.data;
-
-    if (s.hasBid) {
-      el.yourBid.textContent = `${s.bid.amount} ⭐`;
-      el.yourPosition.textContent = `#${s.position} / ${s.totalBidders}`;
-    } else {
-      el.yourBid.textContent = t('auction.not_placed');
-      el.yourPosition.textContent = '—';
-    }
-  } catch (err) {
-    console.error('Status load error:', err);
+  // Находим ставку пользователя в лидерборде
+  const userBid = leaderboardData.find(b => b.oduserId === state.user.id);
+  
+  if (userBid) {
+    el.yourBid.textContent = `${userBid.amount} ⭐`;
+    el.yourPosition.textContent = `#${userBid.position} / ${leaderboardData.length}`;
+  } else {
+    el.yourBid.textContent = t('auction.not_placed');
+    el.yourPosition.textContent = '—';
   }
 }
 
@@ -878,7 +870,7 @@ async function refreshLeaderboard() {
   
   try {
     await loadLeaderboard(state.currentAuction.id, false); // не сбрасывать страницу
-    await loadUserStatus(state.currentAuction.id);
+    // Статус обновляется автоматически из лидерборда
   } finally {
     el.refreshLeaderboardBtn.disabled = false;
     el.refreshLeaderboardBtn.textContent = '↻';
@@ -899,9 +891,8 @@ async function handlePlaceBid() {
     
     el.bidAmount.value = '';
     
-    // Обновляем в фоне (не блокируем кнопку)
+    // Обновляем баланс (статус придёт через WebSocket лидерборд)
     updateBalance();
-    loadUserStatus(state.currentAuction.id);
 
     const msg = result.data.isNewBid
       ? t('auction.bid_placed', { amount })
@@ -924,9 +915,8 @@ async function handleOutbid() {
     
     const result = await api.quickBid(state.currentAuction.id, state.user.id, 'outbid');
     
-    // Обновляем в фоне (не блокируем кнопку)
+    // Обновляем баланс (статус придёт через WebSocket лидерборд)
     updateBalance();
-    loadUserStatus(state.currentAuction.id);
     
     const amount = result.data.bid.amount;
     notify(result.data.roundExtended 
@@ -1091,20 +1081,21 @@ function initSocket() {
         return;
       }
       
-      // Обновляем данные лидерборда
+      // Обновляем данные лидерборда (включая oduserId для поиска своей позиции)
       leaderboardData = data.leaderboard.map(b => ({
         position: b.position,
         username: b.username,
         amount: b.amount,
         status: b.status,
+        oduserId: b.oduserId,  // ID пользователя для поиска своей позиции
       }));
       leaderboardTotalPages = Math.ceil(leaderboardData.length / LEADERBOARD_PER_PAGE);
       
       // Рендерим мгновенно
       renderLeaderboardPage();
       
-      // Обновляем статус пользователя (debounced)
-      loadUserStatus(data.auctionId);
+      // Обновляем статус пользователя из лидерборда (БЕЗ HTTP!)
+      updateUserStatusFromLeaderboard();
     }
   });
 
