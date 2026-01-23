@@ -240,10 +240,13 @@
             <button type="button" id="add-round-btn" class="btn-small btn-secondary" data-i18n="create.add_round">+ Добавить раунд</button>
           </div>
           
-          <label class="bot-toggle">
-            <input type="checkbox" id="enable-bot-simulation">
-            <span data-i18n="create.enable_bots">Тестовый режим</span>
-          </label>
+          <div class="bot-simulation-toggle">
+            <label class="toggle-switch">
+              <input type="checkbox" id="enable-bot-simulation">
+              <span class="toggle-slider"></span>
+            </label>
+            <span class="toggle-label" data-i18n="create.enable_bots">Симуляция торгов</span>
+          </div>
           
           <button type="submit" class="btn-success" style="width: 100%; margin-top: 8px;" data-i18n="common.create">Создать</button>
         </form>
