@@ -42,11 +42,14 @@ export function createApp(): Application {
   // Авторизация
   app.use(authMiddleware);
 
-  // Статика с кэшированием
+  // Статика без кэширования (для отладки)
   app.use(express.static(path.join(__dirname, '../public'), {
-    maxAge: '1d',
+    maxAge: 0,
     etag: false,
     lastModified: false,
+    setHeaders: (res) => {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    },
   }));
 
   // API
