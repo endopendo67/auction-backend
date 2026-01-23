@@ -791,8 +791,26 @@ function renderWinners(winners) {
   updateLeaderboardPagination();
 }
 
+// Debounce для loadUserStatus — не чаще чем раз в 200ms
+let userStatusTimeout = null;
+let userStatusPending = false;
+
 async function loadUserStatus(auctionId) {
   if (!state.user) return;
+
+  // Debounce: если уже запланирован запрос — просто отметим что нужен ещё один
+  if (userStatusTimeout) {
+    userStatusPending = true;
+    return;
+  }
+
+  userStatusTimeout = setTimeout(() => {
+    userStatusTimeout = null;
+    if (userStatusPending) {
+      userStatusPending = false;
+      loadUserStatus(auctionId);
+    }
+  }, 200);
 
   try {
     const result = await api.getUserBidStatus(auctionId, state.user.id);
@@ -1066,6 +1084,9 @@ function initSocket() {
   });
 
   // Push-обновление лидерборда (только для активных аукционов)
+  // Используем requestAnimationFrame для оптимизации при высокой нагрузке
+  let leaderboardRafPending = false;
+  
   state.socket.on('auction:leaderboard', (data) => {
     if (state.currentAuction && data.auctionId === state.currentAuction.id) {
       // Игнорируем для завершённых аукционов (там показываем победителей)
@@ -1074,7 +1095,7 @@ function initSocket() {
         return;
       }
       
-      // Обновляем данные лидерборда и перерисовываем текущую страницу
+      // Обновляем данные лидерборда
       leaderboardData = data.leaderboard.map(b => ({
         position: b.position,
         username: b.username,
@@ -1082,8 +1103,17 @@ function initSocket() {
         status: b.status,
       }));
       leaderboardTotalPages = Math.ceil(leaderboardData.length / LEADERBOARD_PER_PAGE);
-      renderLeaderboardPage();
-      // Обновляем статус пользователя
+      
+      // Используем RAF для батчинга обновлений UI
+      if (!leaderboardRafPending) {
+        leaderboardRafPending = true;
+        requestAnimationFrame(() => {
+          leaderboardRafPending = false;
+          renderLeaderboardPage();
+        });
+      }
+      
+      // Обновляем статус пользователя (debounced)
       loadUserStatus(data.auctionId);
     }
   });

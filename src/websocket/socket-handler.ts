@@ -12,12 +12,14 @@ interface AuctionRoom {
 class SocketHandler {
   private io: Server | null = null;
   private auctionRooms: Map<string, AuctionRoom> = new Map();
-  private lobbyClients: Set<string> = new Set(); // Клиенты в лобби (список аукционов)
+  private lobbyClients: Set<string> = new Set();
   
-  // Throttle для лидерборда под высокой нагрузкой
-  private leaderboardThrottleMs = 100; // 100ms между обновлениями
+  // Throttle для лидерборда — адаптивный под нагрузку
+  private readonly MIN_THROTTLE_MS = 50;  // Минимум 50ms
+  private readonly MAX_THROTTLE_MS = 200; // Максимум 200ms
   private pendingLeaderboardUpdates: Map<string, NodeJS.Timeout> = new Map();
   private lastLeaderboardTime: Map<string, number> = new Map();
+  private bidCountPerSecond: Map<string, number> = new Map(); // Счётчик ставок для адаптации
 
   initialize(httpServer: HttpServer): Server {
     this.io = new Server(httpServer, {
@@ -41,6 +43,11 @@ class SocketHandler {
       // Уведомляем лобби об изменении статуса (мгновенно)
       if (event.type === 'round_started' || event.type === 'round_ended' || event.type === 'auction_completed') {
         this.broadcastAuctionStatus(event.auctionId);
+      }
+      
+      // Очищаем ресурсы при завершении аукциона
+      if (event.type === 'auction_completed') {
+        this.cleanupAuction(event.auctionId);
       }
     });
 
@@ -251,10 +258,25 @@ class SocketHandler {
     this.scheduleLeaderboardBroadcast(auctionId);
   }
 
-  // Throttle для лидерборда — не чаще чем раз в 100ms
+  // Адаптивный throttle — чем больше нагрузка, тем реже обновляем
   private scheduleLeaderboardBroadcast(auctionId: string): void {
     const now = Date.now();
     const lastTime = this.lastLeaderboardTime.get(auctionId) || 0;
+    
+    // Считаем ставки для адаптивного throttle
+    const bidCount = (this.bidCountPerSecond.get(auctionId) || 0) + 1;
+    this.bidCountPerSecond.set(auctionId, bidCount);
+    
+    // Сбрасываем счётчик каждую секунду
+    if (now - lastTime > 1000) {
+      this.bidCountPerSecond.set(auctionId, 1);
+    }
+    
+    // Адаптивный throttle: при высокой нагрузке (>50 RPS) увеличиваем интервал
+    const throttleMs = Math.min(
+      this.MAX_THROTTLE_MS,
+      Math.max(this.MIN_THROTTLE_MS, bidCount * 2)
+    );
     
     // Если уже есть pending update — ничего не делаем
     if (this.pendingLeaderboardUpdates.has(auctionId)) {
@@ -262,11 +284,11 @@ class SocketHandler {
     }
     
     // Если прошло достаточно времени — отправляем сразу
-    if (now - lastTime >= this.leaderboardThrottleMs) {
+    if (now - lastTime >= throttleMs) {
       this.broadcastLeaderboardNow(auctionId);
     } else {
       // Иначе планируем на потом
-      const delay = this.leaderboardThrottleMs - (now - lastTime);
+      const delay = Math.max(10, throttleMs - (now - lastTime));
       const timeout = setTimeout(() => {
         this.pendingLeaderboardUpdates.delete(auctionId);
         this.broadcastLeaderboardNow(auctionId);
@@ -325,6 +347,24 @@ class SocketHandler {
   
   getLobbySize(): number {
     return this.lobbyClients.size;
+  }
+
+  /**
+   * Очистка ресурсов аукциона (вызывать при завершении)
+   */
+  cleanupAuction(auctionId: string): void {
+    // Отменяем pending leaderboard updates
+    const pending = this.pendingLeaderboardUpdates.get(auctionId);
+    if (pending) {
+      clearTimeout(pending);
+      this.pendingLeaderboardUpdates.delete(auctionId);
+    }
+    
+    // Очищаем счётчики
+    this.lastLeaderboardTime.delete(auctionId);
+    this.bidCountPerSecond.delete(auctionId);
+    
+    logger.debug(`Ресурсы очищены для аукциона ${auctionId}`);
   }
 }
 
