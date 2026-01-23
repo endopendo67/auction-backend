@@ -2,7 +2,7 @@
 
 Многораундовая аукционная система по мотивам Telegram Gift Auctions.
 
-**[Live Demo](https://auction-demo.lol)**
+**[Live Demo](https://auction-demo.lol)** • **[Video Demo](https://youtu.be/yhGUwJE19ng)**
 
 ---
 
