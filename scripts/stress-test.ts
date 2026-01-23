@@ -10,7 +10,7 @@
  */
 
 import mongoose, { Types } from 'mongoose';
-import https from 'https';
+import http from 'http';
 import { config } from '../src/config';
 import { User, Auction, Bid, AuctionStatus, BidStatus } from '../src/models';
 import { userService, auctionService, redisService } from '../src/services';
@@ -22,15 +22,17 @@ const CONFIG = {
   totalBots: 6000,
   initialBalance: 100000,
   // Оптимизированные параметры
-  concurrentRequests: 50,    // Макс параллельных запросов (было ~100 RPS)
-  requestDelayMs: 20,        // Задержка между запросами
-  apiBaseUrl: 'https://auction-demo.lol',
+  concurrentRequests: 50,
+  requestDelayMs: 20,
+  // Локальный адрес для работы внутри Docker
+  apiHost: 'localhost',
+  apiPort: 80,
 };
 
-// HTTPS агент с оптимальным пулом
-const agent = new https.Agent({ 
+// HTTP агент с connection pooling (локально без HTTPS)
+const agent = new http.Agent({ 
   keepAlive: true, 
-  maxSockets: 50,
+  maxSockets: 100,
   keepAliveMsecs: 10000,
 });
 
@@ -57,7 +59,7 @@ class StressTester {
 
   async initialize(): Promise<void> {
     console.log('\n🚀 Инициализация стресс-теста\n');
-    console.log(`API: ${CONFIG.apiBaseUrl}`);
+    console.log(`API: http://${CONFIG.apiHost}:${CONFIG.apiPort}`);
     console.log(`Параллельных запросов: ${CONFIG.concurrentRequests}`);
     
     await mongoose.connect(config.mongodb.uri, {
@@ -269,9 +271,9 @@ class StressTester {
     return new Promise((resolve, reject) => {
       const data = JSON.stringify(body);
 
-      const options: https.RequestOptions = {
-        hostname: 'auction-demo.lol',
-        port: 443,
+      const options: http.RequestOptions = {
+        hostname: CONFIG.apiHost,
+        port: CONFIG.apiPort,
         path,
         method,
         agent,
@@ -279,10 +281,10 @@ class StressTester {
           'Content-Type': 'application/json',
           'Content-Length': Buffer.byteLength(data),
         },
-        timeout: 15000,
+        timeout: 10000,
       };
 
-      const req = https.request(options, (res) => {
+      const req = http.request(options, (res) => {
         let body = '';
         res.on('data', chunk => body += chunk);
         res.on('end', () => {

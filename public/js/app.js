@@ -791,7 +791,7 @@ function renderWinners(winners) {
   updateLeaderboardPagination();
 }
 
-// Debounce для loadUserStatus — не чаще чем раз в 200ms
+// Debounce для loadUserStatus — не чаще чем раз в 100ms
 let userStatusTimeout = null;
 let userStatusPending = false;
 
@@ -810,7 +810,7 @@ async function loadUserStatus(auctionId) {
       userStatusPending = false;
       loadUserStatus(auctionId);
     }
-  }, 200);
+  }, 100);
 
   try {
     const result = await api.getUserBidStatus(auctionId, state.user.id);
@@ -1083,15 +1083,11 @@ function initSocket() {
     }
   });
 
-  // Push-обновление лидерборда (только для активных аукционов)
-  // Используем requestAnimationFrame для оптимизации при высокой нагрузке
-  let leaderboardRafPending = false;
-  
+  // Push-обновление лидерборда — МГНОВЕННОЕ для real-time
   state.socket.on('auction:leaderboard', (data) => {
     if (state.currentAuction && data.auctionId === state.currentAuction.id) {
       // Игнорируем для завершённых аукционов (там показываем победителей)
       if (state.currentAuction.status === 'completed') {
-        console.log('Ignoring leaderboard update for completed auction');
         return;
       }
       
@@ -1104,14 +1100,8 @@ function initSocket() {
       }));
       leaderboardTotalPages = Math.ceil(leaderboardData.length / LEADERBOARD_PER_PAGE);
       
-      // Используем RAF для батчинга обновлений UI
-      if (!leaderboardRafPending) {
-        leaderboardRafPending = true;
-        requestAnimationFrame(() => {
-          leaderboardRafPending = false;
-          renderLeaderboardPage();
-        });
-      }
+      // Рендерим мгновенно
+      renderLeaderboardPage();
       
       // Обновляем статус пользователя (debounced)
       loadUserStatus(data.auctionId);

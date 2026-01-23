@@ -14,9 +14,9 @@ class SocketHandler {
   private auctionRooms: Map<string, AuctionRoom> = new Map();
   private lobbyClients: Set<string> = new Set();
   
-  // Throttle для лидерборда — адаптивный под нагрузку
-  private readonly MIN_THROTTLE_MS = 50;  // Минимум 50ms
-  private readonly MAX_THROTTLE_MS = 200; // Максимум 200ms
+  // Throttle для лидерборда — быстрый для real-time
+  private readonly MIN_THROTTLE_MS = 30;  // Минимум 30ms
+  private readonly MAX_THROTTLE_MS = 100; // Максимум 100ms (было 200)
   private pendingLeaderboardUpdates: Map<string, NodeJS.Timeout> = new Map();
   private lastLeaderboardTime: Map<string, number> = new Map();
   private bidCountPerSecond: Map<string, number> = new Map(); // Счётчик ставок для адаптации
