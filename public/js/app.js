@@ -1270,15 +1270,15 @@ async function init() {
   el.createAuctionForm?.addEventListener('submit', handleCreateAuction);
   el.langSelect?.addEventListener('change', handleLanguageChange);
   
-  // Anti-snipe toggle - show/hide settings
+  // Anti-snipe toggle - show/hide fields
   const antiSnipeEnabled = $('anti-snipe-enabled');
-  const antiSnipeSettings = $('anti-snipe-settings');
-  if (antiSnipeEnabled && antiSnipeSettings) {
+  const antiSnipeFields = $('anti-snipe-fields');
+  if (antiSnipeEnabled && antiSnipeFields) {
     antiSnipeEnabled.addEventListener('change', () => {
       if (antiSnipeEnabled.checked) {
-        antiSnipeSettings.classList.remove('hidden');
+        antiSnipeFields.classList.remove('hidden');
       } else {
-        antiSnipeSettings.classList.add('hidden');
+        antiSnipeFields.classList.add('hidden');
       }
     });
   }
