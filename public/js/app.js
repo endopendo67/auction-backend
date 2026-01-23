@@ -1276,10 +1276,10 @@ async function init() {
   if (antiSnipeEnabled && antiSnipeStatus) {
     antiSnipeEnabled.addEventListener('change', () => {
       if (antiSnipeEnabled.checked) {
-        antiSnipeStatus.textContent = 'ON';
+        antiSnipeStatus.textContent = 'вкл';
         antiSnipeStatus.classList.remove('off');
       } else {
-        antiSnipeStatus.textContent = 'OFF';
+        antiSnipeStatus.textContent = 'выкл';
         antiSnipeStatus.classList.add('off');
       }
     });
