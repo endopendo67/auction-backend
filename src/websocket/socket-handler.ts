@@ -13,6 +13,11 @@ class SocketHandler {
   private io: Server | null = null;
   private auctionRooms: Map<string, AuctionRoom> = new Map();
   private lobbyClients: Set<string> = new Set(); // Клиенты в лобби (список аукционов)
+  
+  // Throttle для лидерборда под высокой нагрузкой
+  private leaderboardThrottleMs = 100; // 100ms между обновлениями
+  private pendingLeaderboardUpdates: Map<string, NodeJS.Timeout> = new Map();
+  private lastLeaderboardTime: Map<string, number> = new Map();
 
   initialize(httpServer: HttpServer): Server {
     this.io = new Server(httpServer, {
@@ -98,7 +103,7 @@ class SocketHandler {
       const [roundInfo, minWinningBid, leaderboard] = await Promise.all([
         auctionService.getCurrentRoundInfo(new Types.ObjectId(auctionId)),
         bidService.getMinWinningBid(new Types.ObjectId(auctionId)),
-        bidService.getLeaderboard(new Types.ObjectId(auctionId), 100),
+        bidService.getLeaderboard(new Types.ObjectId(auctionId), 500), // Увеличено для пагинации
       ]);
 
       socket.emit('auction:joined', {
@@ -109,7 +114,7 @@ class SocketHandler {
         subscribersCount: room.clients.size,
       });
 
-      // Сразу отправляем лидерборд клиенту
+      // Сразу отправляем лидерборд клиенту (до 500 записей для пагинации)
       socket.emit('auction:leaderboard', {
         auctionId,
         leaderboard: leaderboard.map((bid, index) => ({
@@ -160,7 +165,7 @@ class SocketHandler {
 
   private async sendLeaderboardUpdate(socket: Socket, auctionId: string): Promise<void> {
     try {
-      const leaderboard = await bidService.getLeaderboard(new Types.ObjectId(auctionId), 50);
+      const leaderboard = await bidService.getLeaderboard(new Types.ObjectId(auctionId), 500);
 
       socket.emit('auction:leaderboard', {
         auctionId,
@@ -229,29 +234,55 @@ class SocketHandler {
     }
   }
 
-  // Рассылка новой ставки — МГНОВЕННО без throttle
+  // Рассылка новой ставки — МГНОВЕННО, лидерборд с throttle для оптимизации
   async broadcastBidUpdate(auctionId: string, bid: unknown): Promise<void> {
     if (!this.io) return;
 
     const minWinningBid = await bidService.getMinWinningBid(new Types.ObjectId(auctionId));
 
-    // Мгновенно отправляем инфо о ставке
+    // Мгновенно отправляем инфо о ставке (всегда)
     this.io.to(`auction:${auctionId}`).emit('auction:new_bid', {
       auctionId,
       bid,
       minWinningBid,
     });
 
-    // Мгновенно обновляем лидерборд (без throttle для real-time UX)
-      await this.broadcastLeaderboard(auctionId);
+    // Лидерборд с throttle для высокой нагрузки (100ms)
+    this.scheduleLeaderboardBroadcast(auctionId);
   }
 
-  // Отправка лидерборда всем в комнате аукциона
-  private async broadcastLeaderboard(auctionId: string): Promise<void> {
+  // Throttle для лидерборда — не чаще чем раз в 100ms
+  private scheduleLeaderboardBroadcast(auctionId: string): void {
+    const now = Date.now();
+    const lastTime = this.lastLeaderboardTime.get(auctionId) || 0;
+    
+    // Если уже есть pending update — ничего не делаем
+    if (this.pendingLeaderboardUpdates.has(auctionId)) {
+      return;
+    }
+    
+    // Если прошло достаточно времени — отправляем сразу
+    if (now - lastTime >= this.leaderboardThrottleMs) {
+      this.broadcastLeaderboardNow(auctionId);
+    } else {
+      // Иначе планируем на потом
+      const delay = this.leaderboardThrottleMs - (now - lastTime);
+      const timeout = setTimeout(() => {
+        this.pendingLeaderboardUpdates.delete(auctionId);
+        this.broadcastLeaderboardNow(auctionId);
+      }, delay);
+      this.pendingLeaderboardUpdates.set(auctionId, timeout);
+    }
+  }
+
+  // Немедленная отправка лидерборда
+  private async broadcastLeaderboardNow(auctionId: string): Promise<void> {
     if (!this.io) return;
+    
+    this.lastLeaderboardTime.set(auctionId, Date.now());
 
     try {
-      const leaderboard = await bidService.getLeaderboard(new Types.ObjectId(auctionId), 50);
+      const leaderboard = await bidService.getLeaderboard(new Types.ObjectId(auctionId), 500);
       
       this.io.to(`auction:${auctionId}`).emit('auction:leaderboard', {
         auctionId,

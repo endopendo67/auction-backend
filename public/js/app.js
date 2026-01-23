@@ -687,10 +687,12 @@ function renderLeaderboard(bids, startIndex = 0) {
     const isWinning = globalIndex < itemsInRound;
     const isYou = state.user && bid.username === state.user.username;
     const classes = [isWinning ? 'winning' : '', isYou ? 'you' : ''].filter(Boolean).join(' ');
+    const position = bid.position || globalIndex + 1;
+    const positionText = isWinning ? `🏆 #${position}` : `#${position}`;
     
     return `
       <tr class="${classes}">
-        <td>${bid.position || globalIndex + 1}</td>
+        <td>${positionText}</td>
         <td>${escapeHtml(bid.username)}${isYou ? ' ' + t('leaderboard.you') : ''}</td>
         <td>${bid.amount} ⭐</td>
       </tr>
