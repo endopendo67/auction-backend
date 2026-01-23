@@ -53,8 +53,8 @@ export class BidService {
       throw new Error(`Максимальная ставка: ${LIMITS.MAX_BID_AMOUNT}`);
     }
 
-    // === Параллельная загрузка аукциона, существующей ставки и минимальной победной ===
-    const [auction, existingBid, minWinningBid] = await Promise.all([
+    // === Параллельная загрузка аукциона, существующей ставки, минимальной победной и статуса победы ===
+    const [auction, existingBid, minWinningBid, alreadyWon] = await Promise.all([
       Auction.findById(auctionId)
         .select('status currentRound rounds startingPrice minBidIncrement')
         .lean(),
@@ -66,7 +66,13 @@ export class BidService {
         .select('_id amount')
         .lean(),
       this.getMinWinningBid(auctionId),
+      Bid.exists({ auctionId, userId, status: BidStatus.WON }),
     ]);
+
+    // Проверка: уже выиграл в этом аукционе
+    if (alreadyWon) {
+      throw new Error('Вы уже выиграли предмет в этом аукционе');
+    }
 
     if (!auction) throw new Error('Аукцион не найден');
     if (auction.status !== AuctionStatus.ACTIVE) {
@@ -352,10 +358,18 @@ export class BidService {
         status: { $in: [BidStatus.ACTIVE, BidStatus.CARRIED_OVER] },
     }).sort({ amount: -1, createdAt: 1 });
 
+    // Получаем список уже выигравших пользователей в этом аукционе
+    const previousWinners = await Bid.distinct('userId', {
+      auctionId,
+      status: BidStatus.WON,
+    });
+    const previousWinnersSet = new Set(previousWinners.map(id => id.toString()));
+
     const winners: Types.ObjectId[] = [];
     const winnersData: Array<{ oderId: Types.ObjectId; amount: number; itemNumber: number }> = [];
       let carriedOver = 0;
       let refunded = 0;
+    let winnersSelected = 0;
 
     // Batch операции для User
     const userUpdates: Array<{ oderId: Types.ObjectId; balanceDelta: number; lockedDelta: number }> = [];
@@ -363,12 +377,27 @@ export class BidService {
 
       for (let i = 0; i < allBids.length; i++) {
         const bid = allBids[i];
-      const isWinner = i < itemsToDistribute;
+      
+      // Пропускаем уже выигравших в предыдущих раундах
+      if (previousWinnersSet.has(bid.userId.toString())) {
+        // Возвращаем деньги победителям прошлых раундов (их ставка уже неактуальна)
+        userUpdates.push({
+          oderId: bid.userId,
+          balanceDelta: 0,
+          lockedDelta: -bid.amount,
+        });
+        bidUpdates.push({ id: bid._id as Types.ObjectId, status: BidStatus.REFUNDED });
+        refunded++;
+        continue;
+      }
+
+      const isWinner = winnersSelected < itemsToDistribute;
 
       if (isWinner) {
         const itemNumber = auction.distributedItems + winners.length + 1;
         winners.push(bid.userId);
         winnersData.push({ oderId: bid.userId, amount: bid.amount, itemNumber });
+        winnersSelected++;
         
         // Победитель: списываем balance и lockedBalance
         userUpdates.push({

@@ -5,6 +5,14 @@ import { auctionService, bidService, botSimulatorService } from '../services';
 import { asyncHandler, createError } from '../middleware/error-handler';
 import { socketHandler } from '../websocket/socket-handler';
 
+const antiSnipeSchema = z.object({
+  enabled: z.boolean().optional().default(true),
+  thresholdMs: z.number().int().min(5000).max(300000).optional().default(30000),
+  extensionMs: z.number().int().min(10000).max(600000).optional().default(60000),
+  maxExtensions: z.number().int().min(0).max(100).optional().default(0),
+  probability: z.number().min(0).max(1).optional().default(1),
+}).optional();
+
 const createAuctionSchema = z.object({
   title: z.string().min(1).max(128).trim(),
   description: z.string().max(1024).optional(),
@@ -19,6 +27,7 @@ const createAuctionSchema = z.object({
   ).min(1),
   startTime: z.string().datetime().transform((val) => new Date(val)),
   createdBy: z.string().regex(/^[a-f\d]{24}$/i),
+  antiSnipe: antiSnipeSchema,
   enableBotSimulation: z.boolean().optional().default(false),
   botCount: z.number().int().min(2).max(20).optional().default(5),
 });

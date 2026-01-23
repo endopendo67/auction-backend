@@ -1027,6 +1027,16 @@ async function handleCreateAuction(e) {
   const enableBotSimulation = el.enableBotSimulation?.checked || false;
   const botCount = Math.max(5, totalItems * 3); // Минимум 5, или 3x от товаров
 
+  // Настройки anti-sniping
+  const antiSnipeEnabled = $('anti-snipe-enabled')?.checked ?? true;
+  const antiSnipe = {
+    enabled: antiSnipeEnabled,
+    thresholdMs: parseInt($('anti-snipe-threshold')?.value || '30') * 1000,
+    extensionMs: parseInt($('anti-snipe-extension')?.value || '60') * 1000,
+    maxExtensions: parseInt($('anti-snipe-max')?.value || '0'),
+    probability: parseInt($('anti-snipe-probability')?.value || '100') / 100,
+  };
+
   const data = {
     title: $('auction-title').value,
     description: $('auction-desc').value,
@@ -1035,6 +1045,7 @@ async function handleCreateAuction(e) {
     roundsConfig,
     startTime: new Date().toISOString(),
     createdBy: state.user.id,
+    antiSnipe,
   };
 
   try {
@@ -1258,6 +1269,21 @@ async function init() {
   el.addRoundBtn?.addEventListener('click', addRoundRow);
   el.createAuctionForm?.addEventListener('submit', handleCreateAuction);
   el.langSelect?.addEventListener('change', handleLanguageChange);
+  
+  // Anti-snipe toggle status update
+  const antiSnipeEnabled = $('anti-snipe-enabled');
+  const antiSnipeStatus = $('anti-snipe-status');
+  if (antiSnipeEnabled && antiSnipeStatus) {
+    antiSnipeEnabled.addEventListener('change', () => {
+      if (antiSnipeEnabled.checked) {
+        antiSnipeStatus.textContent = 'ON';
+        antiSnipeStatus.classList.remove('off');
+      } else {
+        antiSnipeStatus.textContent = 'OFF';
+        antiSnipeStatus.classList.add('off');
+      }
+    });
+  }
   
   el.bidAmount?.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') handlePlaceBid();

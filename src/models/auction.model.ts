@@ -20,6 +20,14 @@ export interface IRound {
   winnersCount: number;
 }
 
+export interface IAntiSnipeSettings {
+  enabled: boolean;           // Включен ли anti-sniping
+  thresholdMs: number;        // За сколько мс до конца срабатывает (30000 = 30с)
+  extensionMs: number;        // На сколько продлевать (60000 = 60с)
+  maxExtensions: number;      // Макс. продлений за раунд (0 = без лимита)
+  probability: number;        // Вероятность срабатывания (1 = 100%, 0.5 = 50%)
+}
+
 export interface IAuction {
   title: string;
   description: string;
@@ -32,6 +40,7 @@ export interface IAuction {
   status: AuctionStatus;
   startTime: Date;
   endTime?: Date;
+  antiSnipe: IAntiSnipeSettings;
   createdBy: Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
@@ -111,6 +120,13 @@ const auctionSchema = new Schema<IAuctionDocument>(
       required: true,
     },
     endTime: Date,
+    antiSnipe: {
+      enabled: { type: Boolean, default: true },
+      thresholdMs: { type: Number, default: 30000, min: 5000, max: 300000 },
+      extensionMs: { type: Number, default: 60000, min: 10000, max: 600000 },
+      maxExtensions: { type: Number, default: 0, min: 0, max: 100 }, // 0 = без лимита
+      probability: { type: Number, default: 1, min: 0, max: 1 },
+    },
     createdBy: {
       type: Schema.Types.ObjectId,
       ref: 'User',

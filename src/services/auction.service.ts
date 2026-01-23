@@ -14,6 +14,14 @@ const LIMITS = {
   MAX_ROUND_DURATION_MS: 86400000, // 24 часа максимум
 } as const;
 
+export interface AntiSnipeConfig {
+  enabled?: boolean;
+  thresholdMs?: number;
+  extensionMs?: number;
+  maxExtensions?: number;
+  probability?: number;
+}
+
 export interface CreateAuctionParams {
   title: string;
   description?: string;
@@ -23,6 +31,7 @@ export interface CreateAuctionParams {
   roundsConfig: Array<{ itemsToDistribute: number; durationMs: number }>;
   startTime: Date;
   createdBy: Types.ObjectId;
+  antiSnipe?: AntiSnipeConfig;
 }
 
 export class AuctionService {
@@ -37,6 +46,7 @@ export class AuctionService {
       roundsConfig,
       startTime,
       createdBy,
+      antiSnipe,
     } = params;
 
     // === EDGE CASE: Валидация входных данных ===
@@ -115,6 +125,15 @@ export class AuctionService {
       return round;
     });
 
+    // Настройки anti-sniping с дефолтами
+    const antiSnipeSettings = {
+      enabled: antiSnipe?.enabled ?? true,
+      thresholdMs: antiSnipe?.thresholdMs ?? config.auction.antiSnipeThresholdMs,
+      extensionMs: antiSnipe?.extensionMs ?? config.auction.antiSnipeExtensionMs,
+      maxExtensions: antiSnipe?.maxExtensions ?? 0, // 0 = без лимита
+      probability: antiSnipe?.probability ?? 1, // 100% по умолчанию
+    };
+
     const auction = new Auction({
       title,
       description: description || '',
@@ -125,6 +144,7 @@ export class AuctionService {
       currentRound: 0,
       status: AuctionStatus.PENDING,
       startTime,
+      antiSnipe: antiSnipeSettings,
       createdBy,
     });
 
@@ -192,45 +212,67 @@ export class AuctionService {
    */
   async extendRoundTime(auctionId: Types.ObjectId): Promise<boolean> {
     const now = Date.now();
-    const threshold = new Date(now + config.auction.antiSnipeThresholdMs);
-    const newEndTime = new Date(now + config.auction.antiSnipeExtensionMs);
 
-    // Проверяем условия для снайпа
-    const auction = await Auction.findById(auctionId).select('currentRound status rounds').lean();
+    // Получаем аукцион с настройками anti-snipe
+    const auction = await Auction.findById(auctionId)
+      .select('currentRound status rounds antiSnipe')
+      .lean();
+    
     if (!auction || auction.status !== AuctionStatus.ACTIVE) return false;
+
+    // Проверяем включен ли anti-snipe
+    const antiSnipe = auction.antiSnipe || {
+      enabled: true,
+      thresholdMs: config.auction.antiSnipeThresholdMs,
+      extensionMs: config.auction.antiSnipeExtensionMs,
+      maxExtensions: 0,
+      probability: 1,
+    };
+
+    if (!antiSnipe.enabled) return false;
 
     const roundIndex = auction.currentRound;
     const currentRound = auction.rounds[roundIndex];
+    if (!currentRound || currentRound.status !== 'active') return false;
     
-    // Если снайп уже использован в этом раунде — пропускаем
-    if (currentRound?.snipeUsed) return false;
+    // Проверяем лимит продлений (0 = без лимита)
+    if (antiSnipe.maxExtensions > 0 && currentRound.extensionCount >= antiSnipe.maxExtensions) {
+      return false;
+    }
     
-    // Случайный шанс 50%
-    if (Math.random() > 0.5) return false;
+    // Проверяем вероятность срабатывания
+    if (Math.random() > antiSnipe.probability) return false;
+
+    const threshold = new Date(now + antiSnipe.thresholdMs);
+    const newEndTime = new Date(now + antiSnipe.extensionMs);
     
-    // АТОМАРНО: проверяем и обновляем
+    // Строим условие для maxExtensions
+    const updateFilter: Record<string, unknown> = {
+      _id: auctionId,
+      status: AuctionStatus.ACTIVE,
+      [`rounds.${roundIndex}.status`]: 'active',
+      [`rounds.${roundIndex}.endTime`]: { 
+        $gt: new Date(now),
+        $lte: threshold
+      }
+    };
+
+    // Если есть лимит — проверяем его
+    if (antiSnipe.maxExtensions > 0) {
+      updateFilter[`rounds.${roundIndex}.extensionCount`] = { $lt: antiSnipe.maxExtensions };
+    }
+
     const result = await Auction.updateOne(
+      updateFilter,
       {
-        _id: auctionId,
-        status: AuctionStatus.ACTIVE,
-        [`rounds.${roundIndex}.status`]: 'active',
-        [`rounds.${roundIndex}.snipeUsed`]: false,
-        [`rounds.${roundIndex}.endTime`]: { 
-          $gt: new Date(now),
-          $lte: threshold
-        }
-      },
-      {
-        $set: { 
-          [`rounds.${roundIndex}.endTime`]: newEndTime,
-          [`rounds.${roundIndex}.snipeUsed`]: true,
-        },
+        $set: { [`rounds.${roundIndex}.endTime`]: newEndTime },
         $inc: { [`rounds.${roundIndex}.extensionCount`]: 1 },
       }
     );
 
     if (result.modifiedCount > 0) {
-      logger.info(`Anti-snipe: раунд продлён (50% шанс), auction=${auctionId}`);
+      const prob = Math.round(antiSnipe.probability * 100);
+      logger.info(`Anti-snipe: раунд продлён (+${antiSnipe.extensionMs / 1000}с, ${prob}%), auction=${auctionId}`);
       return true;
     }
 
