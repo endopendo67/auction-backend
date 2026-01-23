@@ -473,6 +473,29 @@ export class BidService {
 
     return { bids, total };
   }
+
+  /**
+   * Выигранные предметы пользователя
+   */
+  async getUserWonItems(
+    userId: Types.ObjectId,
+    page: number = 1,
+    limit: number = 20
+  ): Promise<{ items: any[]; total: number }> {
+    const skip = (page - 1) * limit;
+
+    const [items, total] = await Promise.all([
+      Bid.find({ userId, status: BidStatus.WON })
+        .sort({ updatedAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate('auctionId', 'title')
+        .lean(),
+      Bid.countDocuments({ userId, status: BidStatus.WON }),
+    ]);
+
+    return { items, total };
+  }
 }
 
 export const bidService = new BidService();

@@ -112,4 +112,11 @@ export const ru = {
   'history.no_bids': 'Ставок пока нет',
   'history.unknown_auction': 'Аукцион',
   'history.won': '🏆 Выиграно',
+  
+  'items.button': '🎁 Предметы',
+  'items.title': '🎁 Мои предметы',
+  'items.no_items': 'Выигранных предметов пока нет',
+  'items.unknown_auction': 'Неизвестный аукцион',
+  'items.winning_bid': 'Ставка',
+  'items.round': 'Раунд',
 };

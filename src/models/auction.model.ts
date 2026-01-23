@@ -15,6 +15,7 @@ export interface IRound {
   endTime: Date;
   originalEndTime: Date;  // исходное время без продлений
   extensionCount: number;  // сколько раз продлевали (anti-snipe)
+  snipeUsed: boolean;      // снайп уже использован в этом раунде
   status: 'pending' | 'active' | 'completed';
   winnersCount: number;
 }
@@ -50,6 +51,7 @@ const roundSchema = new Schema<IRound>(
     endTime: { type: Date, required: true },
     originalEndTime: { type: Date, required: true },
     extensionCount: { type: Number, default: 0 },
+    snipeUsed: { type: Boolean, default: false },
     status: {
       type: String,
       enum: ['pending', 'active', 'completed'],

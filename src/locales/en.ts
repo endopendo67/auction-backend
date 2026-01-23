@@ -112,4 +112,11 @@ export const en = {
   'history.no_bids': 'No bids yet',
   'history.unknown_auction': 'Auction',
   'history.won': '🏆 Won',
+  
+  'items.button': '🎁 Items',
+  'items.title': '🎁 My Items',
+  'items.no_items': 'No won items yet',
+  'items.unknown_auction': 'Unknown auction',
+  'items.winning_bid': 'Bid',
+  'items.round': 'Round',
 };

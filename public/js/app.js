@@ -81,6 +81,16 @@ const el = {
   historyNext: $('history-next'),
   historyPage: $('history-page'),
   
+  // Предметы
+  itemsBtn: $('items-btn'),
+  itemsBackBtn: $('items-back-btn'),
+  itemsSection: $('items-section'),
+  itemsList: $('items-list'),
+  itemsPagination: $('items-pagination'),
+  itemsPrev: $('items-prev'),
+  itemsNext: $('items-next'),
+  itemsPage: $('items-page'),
+  
   // Уведомления
   notifications: $('notifications'),
   
@@ -159,6 +169,10 @@ const api = {
   // History
   getBidHistory: (userId, page = 1, limit = 20) => 
     api.request(`/users/${userId}/bids?page=${page}&limit=${limit}`),
+  
+  // Won Items
+  getWonItems: (userId, page = 1, limit = 20) => 
+    api.request(`/users/${userId}/won-items?page=${page}&limit=${limit}`),
 };
 
 // Уведомления
@@ -375,6 +389,88 @@ function showHistory() {
 
 function hideHistory() {
   el.historySection.classList.add('hidden');
+  el.auctionsSection.classList.remove('hidden');
+}
+
+// ==================== ПРЕДМЕТЫ ====================
+let itemsPage = 1;
+let itemsTotalPages = 1;
+
+async function loadItems(page = 1) {
+  if (!state.user) return;
+  
+  el.itemsList.innerHTML = `<p class="empty-state">${t('common.loading')}</p>`;
+  
+  try {
+    const result = await api.getWonItems(state.user.id, page, 20);
+    itemsPage = result.pagination.page;
+    itemsTotalPages = result.pagination.pages;
+    renderItems(result.data);
+    updateItemsPagination();
+  } catch (err) {
+    el.itemsList.innerHTML = `<p class="empty-state">${t('common.error')}</p>`;
+  }
+}
+
+function renderItems(items) {
+  if (!items || !items.length) {
+    el.itemsList.innerHTML = `<p class="empty-state">${t('items.no_items')}</p>`;
+    el.itemsPagination.classList.add('hidden');
+    return;
+  }
+  
+  el.itemsList.innerHTML = items.map(item => {
+    const auctionTitle = item.auctionId?.title || t('items.unknown_auction');
+    const wonDate = new Date(item.updatedAt).toLocaleString();
+    
+    return `
+      <div class="item-card">
+        <div class="item-header">
+          <span class="item-number">#${item.itemNumber}</span>
+          <span class="item-badge">🏆</span>
+        </div>
+        <div class="item-auction">${escapeHtml(auctionTitle)}</div>
+        <div class="item-details">
+          <div class="item-row">
+            <span>${t('items.winning_bid')}:</span>
+            <span class="item-amount">${item.amount} ⭐</span>
+          </div>
+          <div class="item-row">
+            <span>${t('items.round')}:</span>
+            <span>${item.round + 1}</span>
+          </div>
+          <div class="item-date">${wonDate}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+  
+  el.itemsPagination.classList.remove('hidden');
+}
+
+function updateItemsPagination() {
+  if (itemsTotalPages <= 1) {
+    el.itemsPagination.classList.add('hidden');
+    return;
+  }
+  
+  el.itemsPagination.classList.remove('hidden');
+  el.itemsPage.textContent = `${itemsPage} / ${itemsTotalPages}`;
+  el.itemsPrev.disabled = itemsPage <= 1;
+  el.itemsNext.disabled = itemsPage >= itemsTotalPages;
+}
+
+function showItems() {
+  el.auctionsSection.classList.add('hidden');
+  el.auctionDetail.classList.add('hidden');
+  el.createAuctionSection.classList.add('hidden');
+  el.historySection.classList.add('hidden');
+  el.itemsSection.classList.remove('hidden');
+  loadItems(1);
+}
+
+function hideItems() {
+  el.itemsSection.classList.add('hidden');
   el.auctionsSection.classList.remove('hidden');
 }
 
@@ -1011,6 +1107,10 @@ async function init() {
   el.historyBackBtn?.addEventListener('click', hideHistory);
   el.historyPrev?.addEventListener('click', () => loadHistory(historyPage - 1));
   el.historyNext?.addEventListener('click', () => loadHistory(historyPage + 1));
+  el.itemsBtn?.addEventListener('click', showItems);
+  el.itemsBackBtn?.addEventListener('click', hideItems);
+  el.itemsPrev?.addEventListener('click', () => loadItems(itemsPage - 1));
+  el.itemsNext?.addEventListener('click', () => loadItems(itemsPage + 1));
   el.auctionsPrev?.addEventListener('click', () => loadAuctions(auctionsPage - 1));
   el.auctionsNext?.addEventListener('click', () => loadAuctions(auctionsPage + 1));
   el.refreshAuctionsBtn?.addEventListener('click', refreshAuctions);

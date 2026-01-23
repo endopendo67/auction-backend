@@ -30,4 +30,7 @@ router.get('/:id/transactions', userController.getTransactions);
 // Get user bid history
 router.get('/:id/bids', userController.getBidHistory);
 
+// Get user won items
+router.get('/:id/won-items', userController.getWonItems);
+
 export { router as userRoutes };

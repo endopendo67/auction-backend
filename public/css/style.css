@@ -882,6 +882,73 @@ textarea {
 }
 
 /* ==================== */
+/* ITEMS */
+/* ==================== */
+.items-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.item-card {
+  background: var(--bg-primary);
+  border: 1px solid var(--success);
+  border-radius: var(--border-radius-sm);
+  padding: 16px;
+  position: relative;
+}
+
+.item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.item-number {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.item-badge {
+  font-size: 20px;
+  opacity: 0.7;
+}
+
+.item-auction {
+  font-size: 14px;
+  color: var(--text-primary);
+  margin-bottom: 12px;
+  font-weight: 500;
+}
+
+.item-details {
+  border-top: 1px solid var(--border-color);
+  padding-top: 8px;
+}
+
+.item-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+.item-amount {
+  color: var(--success);
+  font-weight: 600;
+}
+
+.item-date {
+  font-size: 12px;
+  color: var(--text-hint);
+  margin-top: 8px;
+}
+
+/* ==================== */
 /* RESPONSIVE */
 /* ==================== */
 @media (min-width: 600px) {

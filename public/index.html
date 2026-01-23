@@ -47,6 +47,7 @@
             <span id="user-name">—</span>
           </div>
           <div class="user-actions">
+            <button id="items-btn" class="btn-small btn-secondary" data-i18n="items.button">🎁 Предметы</button>
             <button id="history-btn" class="btn-small btn-secondary" data-i18n="history.button">📜 История</button>
             <button id="logout-btn" class="btn-small btn-secondary" data-i18n="auth.logout">Выйти</button>
           </div>
@@ -85,6 +86,20 @@
           <button id="history-prev" class="btn-small btn-secondary">←</button>
           <span id="history-page">1</span>
           <button id="history-next" class="btn-small btn-secondary">→</button>
+        </div>
+      </section>
+
+      <!-- Предметы пользователя -->
+      <section id="items-section" class="card hidden">
+        <button id="items-back-btn" class="btn-link" data-i18n="common.back">← Назад</button>
+        <h2 data-i18n="items.title">🎁 Мои предметы</h2>
+        <div id="items-list" class="items-list">
+          <p class="empty-state" data-i18n="common.loading">Загрузка...</p>
+        </div>
+        <div id="items-pagination" class="pagination hidden">
+          <button id="items-prev" class="btn-small btn-secondary">←</button>
+          <span id="items-page">1</span>
+          <button id="items-next" class="btn-small btn-secondary">→</button>
         </div>
       </section>
 

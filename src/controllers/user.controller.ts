@@ -143,6 +143,26 @@ export const userController = {
     });
   }),
 
+  // Выигранные предметы
+  getWonItems: asyncHandler(async (req: Request, res: Response) => {
+    const userId = new Types.ObjectId(req.params.id);
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
+    
+    const result = await bidService.getUserWonItems(userId, page, limit);
+    
+    res.json({
+      success: true,
+      data: result.items,
+      pagination: {
+        page,
+        limit,
+        total: result.total,
+        pages: Math.ceil(result.total / limit),
+      },
+    });
+  }),
+
   // Список пользователей
   list: asyncHandler(async (req: Request, res: Response) => {
     const page = parseInt(req.query.page as string) || 1;
