@@ -366,13 +366,13 @@ export class BidService {
     const previousWinnersSet = new Set(previousWinners.map(id => id.toString()));
 
     const winners: Types.ObjectId[] = [];
-    const winnersData: Array<{ oderId: Types.ObjectId; amount: number; itemNumber: number }> = [];
+    const winnersData: Array<{ oduserId: Types.ObjectId; amount: number; itemNumber: number }> = [];
       let carriedOver = 0;
       let refunded = 0;
     let winnersSelected = 0;
 
     // Batch операции для User
-    const userUpdates: Array<{ oderId: Types.ObjectId; balanceDelta: number; lockedDelta: number }> = [];
+    const userUpdates: Array<{ oduserId: Types.ObjectId; balanceDelta: number; lockedDelta: number }> = [];
     const bidUpdates: Array<{ id: Types.ObjectId; status: BidStatus; itemNumber?: number }> = [];
 
       for (let i = 0; i < allBids.length; i++) {
@@ -382,7 +382,7 @@ export class BidService {
       if (previousWinnersSet.has(bid.userId.toString())) {
         // Возвращаем деньги победителям прошлых раундов (их ставка уже неактуальна)
         userUpdates.push({
-          oderId: bid.userId,
+          oduserId: bid.userId,
           balanceDelta: 0,
           lockedDelta: -bid.amount,
         });
@@ -396,12 +396,12 @@ export class BidService {
       if (isWinner) {
         const itemNumber = auction.distributedItems + winners.length + 1;
         winners.push(bid.userId);
-        winnersData.push({ oderId: bid.userId, amount: bid.amount, itemNumber });
+        winnersData.push({ oduserId: bid.userId, amount: bid.amount, itemNumber });
         winnersSelected++;
         
         // Победитель: списываем balance и lockedBalance
         userUpdates.push({
-          oderId: bid.userId,
+          oduserId: bid.userId,
           balanceDelta: -bid.amount,
           lockedDelta: -bid.amount,
         });
@@ -411,7 +411,7 @@ export class BidService {
         } else if (isLastRound) {
         // Последний раунд — возврат проигравшим
         userUpdates.push({
-          oderId: bid.userId,
+          oduserId: bid.userId,
           balanceDelta: 0,
           lockedDelta: -bid.amount,
         });
@@ -427,7 +427,7 @@ export class BidService {
     // Выполняем batch обновления User
     const userBulkOps = userUpdates.map(u => ({
       updateOne: {
-        filter: { _id: u.oderId },
+        filter: { _id: u.oduserId },
         update: { $inc: { balance: u.balanceDelta, lockedBalance: u.lockedDelta } },
       }
     }));
@@ -465,11 +465,11 @@ export class BidService {
   }
 
   private async logWinnerTransactions(
-    winners: Array<{ oderId: Types.ObjectId; amount: number; itemNumber: number }>,
+    winners: Array<{ oduserId: Types.ObjectId; amount: number; itemNumber: number }>,
     auctionId: Types.ObjectId
   ): Promise<void> {
     const transactions = winners.map(w => ({
-      userId: w.oderId,
+      userId: w.oduserId,
       type: TransactionType.WIN_CHARGE,
       amount: w.amount,
         auctionId,

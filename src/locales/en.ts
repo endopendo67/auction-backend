@@ -89,6 +89,7 @@ export const en = {
   'create.error': 'Error creating auction',
   'create.enable_bots': 'Trading simulation',
   'create.anti_snipe': 'Anti-Sniping',
+  'create.anti_snipe_desc': 'Protection against last-second bids',
   'create.anti_snipe_enabled': 'Enable anti-sniping',
   'create.anti_snipe_threshold_label': 'Threshold',
   'create.anti_snipe_threshold_tooltip': 'If a bid is placed within the last N seconds of the round, protection triggers and time is extended',

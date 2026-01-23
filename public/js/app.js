@@ -1281,7 +1281,7 @@ async function init() {
         antiSnipeFields.classList.toggle('disabled', !enabled);
       }
       if (antiSnipeBadge) {
-        antiSnipeBadge.textContent = enabled ? 'вкл' : 'выкл';
+        antiSnipeBadge.textContent = t(enabled ? 'create.anti_snipe_on' : 'create.anti_snipe_off');
         antiSnipeBadge.classList.toggle('active', enabled);
       }
     });

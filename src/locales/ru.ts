@@ -89,6 +89,7 @@ export const ru = {
   'create.error': 'Ошибка при создании аукциона',
   'create.enable_bots': 'Симуляция торгов',
   'create.anti_snipe': 'Anti-Sniping',
+  'create.anti_snipe_desc': 'Защита от ставок в последний момент',
   'create.anti_snipe_enabled': 'Включить anti-sniping',
   'create.anti_snipe_threshold_label': 'Порог',
   'create.anti_snipe_threshold_tooltip': 'Если ставка сделана в последние N секунд раунда, срабатывает защита и время продлевается',
