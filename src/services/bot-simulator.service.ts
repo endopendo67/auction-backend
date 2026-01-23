@@ -99,104 +99,109 @@ class BotSimulatorService {
   }
 
   /**
-   * Создать ботов с разными характеристиками
+   * Создать ботов ПАРАЛЛЕЛЬНО для хаотичности
    */
   private async createBots(count: number, startingPrice: number): Promise<ActiveBot[]> {
     const bots: ActiveBot[] = [];
-    const usedNames = new Set<string>();
-
-    for (let i = 0; i < count; i++) {
-      // Уникальное имя
-      let name = BOT_NAMES[i % BOT_NAMES.length];
-      if (usedNames.has(name)) {
-        name = `${name}_${i}`;
+    const batchSize = 50;
+    
+    // Создаём батчами параллельно
+    for (let i = 0; i < count; i += batchSize) {
+      const batch: Promise<ActiveBot>[] = [];
+      const end = Math.min(i + batchSize, count);
+      
+      for (let j = i; j < end; j++) {
+        const name = j < BOT_NAMES.length ? BOT_NAMES[j] : `Bot_${j}`;
+        const personality = BOT_PERSONALITIES[Math.floor(Math.random() * BOT_PERSONALITIES.length)];
+        
+        batch.push(this.createSingleBot(name, personality, startingPrice));
       }
-      usedNames.add(name);
-
-      // Случайная личность
-      const personality = BOT_PERSONALITIES[Math.floor(Math.random() * BOT_PERSONALITIES.length)];
-      const config = this.generateBotConfig(name, personality, startingPrice);
-
-      // Создаём или находим пользователя-бота
-      let user = await User.findOne({ username: name });
-      if (!user) {
-        user = await User.create({
-          username: name,
-          balance: config.balance,
-          lockedBalance: 0,
-          isBot: true,
-        });
-      } else {
-        // Пополняем баланс если нужно
-        if (user.balance < config.balance) {
-          user.balance = config.balance;
-          await user.save();
-        }
-      }
-
-      bots.push({
-        userId: user._id,
-        config,
-        snipeCount: 0,
-        lastBidTime: 0,
-      });
+      
+      const created = await Promise.all(batch);
+      bots.push(...created);
     }
 
+    logger.info(`Создано ${bots.length} ботов параллельно`);
     return bots;
   }
 
+  private async createSingleBot(name: string, personality: BotPersonality, startingPrice: number): Promise<ActiveBot> {
+    const config = this.generateBotConfig(name, personality, startingPrice);
+
+    let user = await User.findOne({ username: name });
+    if (!user) {
+      user = await User.create({
+        username: name,
+        balance: config.balance,
+        lockedBalance: 0,
+        isBot: true,
+      });
+    } else if (user.balance < config.balance) {
+      user.balance = config.balance;
+      await user.save();
+    }
+
+    return {
+      userId: user._id,
+      config,
+      snipeCount: 0,
+      lastBidTime: 0,
+    };
+  }
+
   /**
-   * Генерация конфига бота по личности (АГРЕССИВНЫЕ настройки)
+   * Генерация конфига бота (ХАОТИЧНЫЕ настройки)
    */
   private generateBotConfig(name: string, personality: BotPersonality, startingPrice: number): BotConfig {
+    // Очень низкое время размышления для хаоса
     const base = {
       name,
-      balance: 100000,
-      maxBid: startingPrice * 200,
-      bidMultiplier: 2.0,
-      snipeChance: 0.5,
-      thinkTimeMs: 800, // Быстрее думают
+      balance: 200000,
+      maxBid: startingPrice * 500,
+      bidMultiplier: 3.0 + Math.random() * 5.0, // 3-8x!
+      snipeChance: 0.7,
+      thinkTimeMs: 50 + Math.random() * 200, // 50-250ms — почти мгновенно
     };
 
     switch (personality) {
       case 'aggressive':
         return {
           ...base,
-          bidMultiplier: 3.0,
-          maxBid: startingPrice * 300,
-          thinkTimeMs: 500, // Очень быстрый
-          snipeChance: 0.4,
+          bidMultiplier: 5.0 + Math.random() * 10.0, // 5-15x агрессия!
+          maxBid: startingPrice * 1000,
+          thinkTimeMs: 10 + Math.random() * 50, // 10-60ms
+          snipeChance: 0.8,
         };
       case 'cautious':
         return {
           ...base,
-          bidMultiplier: 1.5,
-          maxBid: startingPrice * 100,
-          thinkTimeMs: 1500,
-          snipeChance: 0.3,
+          bidMultiplier: 1.0 + Math.random() * 2.0,
+          maxBid: startingPrice * 200,
+          thinkTimeMs: 100 + Math.random() * 300,
+          snipeChance: 0.4,
         };
       case 'sniper':
         return {
           ...base,
-          bidMultiplier: 2.0,
-          maxBid: startingPrice * 150,
-          thinkTimeMs: 2000,
-          snipeChance: 0.9, // Почти всегда снайпит
+          bidMultiplier: 2.0 + Math.random() * 3.0,
+          maxBid: startingPrice * 400,
+          thinkTimeMs: 50 + Math.random() * 100,
+          snipeChance: 0.95, // Почти всегда снайпит
         };
       case 'random':
       default:
         return {
           ...base,
-          bidMultiplier: 1.5 + Math.random() * 1.5,
-          maxBid: startingPrice * (80 + Math.random() * 120),
-          thinkTimeMs: 600 + Math.random() * 1500,
-          snipeChance: 0.3 + Math.random() * 0.4,
+          bidMultiplier: Math.random() * 8.0, // 0-8x полный хаос
+          maxBid: startingPrice * (100 + Math.random() * 400),
+          thinkTimeMs: Math.random() * 500,
+          snipeChance: Math.random(),
         };
     }
   }
 
   /**
-   * Основной цикл симуляции
+   * Основной цикл симуляции (ХАОТИЧНЫЙ режим)
    */
   private runSimulationLoop(simulation: AuctionSimulation): void {
     const tick = async () => {
@@ -214,37 +219,45 @@ class BotSimulatorService {
 
         const currentRound = auction.rounds[auction.currentRound];
         if (!currentRound || currentRound.status !== 'active') {
-          // Ждём следующего раунда
-          setTimeout(tick, 2000);
+          setTimeout(tick, 1000);
           return;
         }
 
         const timeRemaining = new Date(currentRound.endTime).getTime() - Date.now();
         const isSnipeTime = timeRemaining <= this.SNIPE_THRESHOLD_MS && timeRemaining > 0;
 
-        // Выбираем случайного бота для действия
-        const bot = this.selectBotForAction(simulation, isSnipeTime);
-        if (bot) {
-          await this.botAction(simulation, bot, isSnipeTime);
+        // ХАОС: Выбираем 3-10 ботов для одновременных действий!
+        const botsToAct = Math.floor(3 + Math.random() * 8);
+        const actions: Promise<void>[] = [];
+        
+        for (let i = 0; i < botsToAct; i++) {
+          const bot = this.selectBotForAction(simulation, isSnipeTime);
+          if (bot) {
+            // Запускаем ставки параллельно (не ждём завершения)
+            actions.push(this.botAction(simulation, bot, isSnipeTime));
+          }
         }
+        
+        // Не ждём завершения — пусть идут параллельно
+        Promise.all(actions).catch(() => {});
 
       } catch (err) {
         logger.error('Ошибка в симуляции', { error: err, auctionId: simulation.auctionId });
       }
 
-      // Следующий тик через случайный интервал (БЫСТРЕЕ)
+      // ХАОТИЧНЫЙ интервал: 50-300ms
       if (simulation.isRunning) {
-        const delay = 300 + Math.random() * 700; // 0.3-1 секунда
+        const delay = 50 + Math.random() * 250;
         setTimeout(tick, delay);
       }
     };
 
-    // Первый тик через 1 секунду
-    setTimeout(tick, 1000);
+    // Начинаем сразу
+    setTimeout(tick, 100);
   }
 
   /**
-   * Выбор бота для действия
+   * Выбор бота для действия (ХАОТИЧНЫЙ)
    */
   private selectBotForAction(simulation: AuctionSimulation, isSnipeTime: boolean): ActiveBot | null {
     const now = Date.now();
@@ -253,14 +266,14 @@ class BotSimulatorService {
     const canSnipe = simulation.totalSnipeCount < this.MAX_TOTAL_SNIPES;
     
     const availableBots = simulation.bots.filter(bot => {
-      // Бот должен "отдохнуть" после предыдущей ставки
-      if (now - bot.lastBidTime < bot.config.thinkTimeMs) return false;
+      // Минимальная пауза 50ms чтобы избежать спама от одного бота
+      if (now - bot.lastBidTime < 50) return false;
       return true;
     });
 
     if (availableBots.length === 0) return null;
 
-    // Случайный выбор с весом на снайперов в конце раунда (только если лимит не исчерпан)
+    // В режиме снайпа — приоритет снайперам
     if (isSnipeTime && canSnipe) {
       const snipers = availableBots.filter(b => Math.random() < b.config.snipeChance);
       if (snipers.length > 0) {
@@ -268,6 +281,7 @@ class BotSimulatorService {
       }
     }
 
+    // Полностью случайный выбор
     return availableBots[Math.floor(Math.random() * availableBots.length)];
   }
 
@@ -294,20 +308,23 @@ class BotSimulatorService {
       // Проверяем, стоит ли делать ставку
       if (currentBid >= bot.config.maxBid) return;
 
-      // Рассчитываем новую ставку
+      // НЕПРЕДСКАЗУЕМАЯ ставка с резкими скачками
       let newAmount: number;
 
       if (currentBid === 0) {
-        // Первая ставка — близко к стартовой цене
-        newAmount = auction.startingPrice + Math.floor(Math.random() * minIncrement * 5);
+        // Первая ставка — случайный скачок от стартовой
+        const jump = Math.floor(Math.random() * minIncrement * 20);
+        newAmount = auction.startingPrice + jump;
       } else if (currentBid < topBid) {
-        // Перебиваем лидера
-        const increment = minIncrement + Math.floor(Math.random() * minIncrement * bot.config.bidMultiplier);
-        newAmount = topBid + increment;
+        // Агрессивное перебивание с большими скачками
+        const aggressiveness = Math.random() < 0.3 ? 10 : 1; // 30% шанс на очень большой скачок
+        const increment = minIncrement * bot.config.bidMultiplier * aggressiveness;
+        newAmount = topBid + Math.floor(increment + Math.random() * increment);
       } else {
-        // Уже лидер — всё равно иногда повышаем для конкуренции
-        if (Math.random() > 0.5) return; // 50% шанс пропустить если уже лидер
-        newAmount = currentBid + minIncrement * (1 + Math.floor(Math.random() * 3));
+        // Уже лидер — случайно повышаем
+        if (Math.random() > 0.7) return; // 70% шанс повысить
+        const jump = minIncrement * Math.floor(1 + Math.random() * 10);
+        newAmount = currentBid + jump;
       }
 
       // Проверяем лимит
