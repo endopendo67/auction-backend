@@ -6,7 +6,7 @@
 
 ---
 
-## Запуск
+## Быстрый запуск (Docker)
 
 ```bash
 git clone https://github.com/endopendo67/auction-backend.git
@@ -15,6 +15,60 @@ docker-compose up -d
 ```
 
 Открой http://localhost
+
+---
+
+## Ручной запуск
+
+### Требования
+
+- Node.js 20+
+- MongoDB 6+
+- Redis 7+
+
+### Установка
+
+```bash
+git clone https://github.com/endopendo67/auction-backend.git
+cd auction-backend
+npm install
+```
+
+### Настройка
+
+Создай `.env` файл:
+
+```env
+PORT=3000
+MONGODB_URI=mongodb://localhost:27017/auction_db
+REDIS_URL=redis://localhost:6379
+NODE_ENV=development
+```
+
+### Запуск MongoDB и Redis
+
+```bash
+# MongoDB
+mongod --dbpath /data/db
+
+# Redis
+redis-server
+```
+
+### Сборка и запуск
+
+```bash
+npm run build
+npm start
+```
+
+Или в режиме разработки:
+
+```bash
+npm run dev
+```
+
+Открой http://localhost:3000
 
 ---
 
