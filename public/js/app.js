@@ -699,12 +699,19 @@ function renderLeaderboard(bids, startIndex = 0) {
 }
 
 function updateLeaderboardPagination() {
+  console.log('updateLeaderboardPagination:', leaderboardPage, '/', leaderboardTotalPages);
+  
   if (leaderboardTotalPages <= 1) {
     el.leaderboardPagination?.classList.add('hidden');
     return;
   }
   
-  el.leaderboardPagination?.classList.remove('hidden');
+  // Убираем hidden класс для пагинации
+  if (el.leaderboardPagination) {
+    el.leaderboardPagination.classList.remove('hidden');
+    console.log('Pagination shown, has hidden?', el.leaderboardPagination.classList.contains('hidden'));
+  }
+  
   if (el.leaderboardPage) {
     el.leaderboardPage.textContent = `${leaderboardPage} / ${leaderboardTotalPages}`;
   }
