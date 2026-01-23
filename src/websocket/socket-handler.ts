@@ -109,35 +109,57 @@ class SocketHandler {
       }
       room.clients.add(socket.id);
 
-      // Отправляем текущее состояние + лидерборд МГНОВЕННО
-      const [roundInfo, minWinningBid, leaderboard] = await Promise.all([
-        auctionService.getCurrentRoundInfo(new Types.ObjectId(auctionId)),
-        bidService.getMinWinningBid(new Types.ObjectId(auctionId)),
-        bidService.getLeaderboard(new Types.ObjectId(auctionId), 500), // Увеличено для пагинации
+      const auctionObjId = new Types.ObjectId(auctionId);
+      const isCompleted = auction.status === 'completed';
+
+      // Параллельно загружаем нужные данные
+      const [roundInfo, minWinningBid, bids] = await Promise.all([
+        auctionService.getCurrentRoundInfo(auctionObjId),
+        bidService.getMinWinningBid(auctionObjId),
+        isCompleted 
+          ? bidService.getAuctionWinners(auctionObjId)  // Победители для завершённых
+          : bidService.getLeaderboard(auctionObjId, 500), // Лидерборд для активных
       ]);
 
+      // Отправляем состояние аукциона
       socket.emit('auction:joined', {
         auctionId,
         auction: auction.toJSON(),
         roundInfo,
         minWinningBid,
         subscribersCount: room.clients.size,
+        isCompleted,
       });
 
-      // Сразу отправляем лидерборд клиенту (до 500 записей для пагинации)
-      // Включаем oduserId чтобы фронт мог найти свою позицию БЕЗ HTTP запросов
-      socket.emit('auction:leaderboard', {
-        auctionId,
-        leaderboard: leaderboard.map((bid, index) => ({
-          position: index + 1,
-          amount: bid.amount,
-          username: (bid.userId as any)?.username || 'Unknown',
-          oduserId: (bid.userId as any)?._id?.toString() || (bid.userId as any)?.toString(),
-          status: bid.status,
-        })),
-      });
+      // Отправляем данные (лидерборд или победители)
+      if (isCompleted) {
+        // Победители — отдельное событие
+        socket.emit('auction:winners', {
+          auctionId,
+          winners: bids.map((bid: any, index: number) => ({
+            position: index + 1,
+            itemNumber: bid.itemNumber,
+            amount: bid.amount,
+            username: (bid.userId as any)?.username || 'Unknown',
+            oduserId: (bid.userId as any)?._id?.toString(),
+            round: bid.round,
+          })),
+        });
+      } else {
+        // Активный лидерборд
+        socket.emit('auction:leaderboard', {
+          auctionId,
+          leaderboard: bids.map((bid: any, index: number) => ({
+            position: index + 1,
+            amount: bid.amount,
+            username: (bid.userId as any)?.username || 'Unknown',
+            oduserId: (bid.userId as any)?._id?.toString() || (bid.userId as any)?.toString(),
+            status: bid.status,
+          })),
+        });
+      }
 
-      logger.debug(`Клиент ${socket.id} присоединился к аукциону ${auctionId}`);
+      logger.debug(`Клиент ${socket.id} присоединился к аукциону ${auctionId} (${isCompleted ? 'completed' : 'active'})`);
     } catch (error) {
       logger.error(`Ошибка подключения к аукциону: ${error}`);
       socket.emit('error', { message: 'Не удалось подключиться к аукциону' });

@@ -576,7 +576,7 @@ function updateAuctionCard(auction) {
 async function openAuction(auctionId) {
   try {
     // Загружаем базовую инфо (лидерборд придёт через WebSocket)
-    await loadAuctionDetail(auctionId, true);
+    await loadAuctionDetail(auctionId);
     showSection(el.auctionDetail);
     
     // Подключаемся к WebSocket — он сразу отправит полный лидерборд
@@ -591,13 +591,14 @@ async function openAuction(auctionId) {
   }
 }
 
-async function loadAuctionDetail(auctionId, skipLeaderboard = false) {
+async function loadAuctionDetail(auctionId) {
   const result = await api.getAuction(auctionId);
   state.currentAuction = result.data;
   
   const a = state.currentAuction;
   const round = a.rounds[a.currentRound];
   
+  // Базовая информация
   el.auctionName.textContent = a.title;
   el.auctionDescription.textContent = a.description || '';
   el.auctionStatus.textContent = t('status.' + a.status);
@@ -608,35 +609,27 @@ async function loadAuctionDetail(auctionId, skipLeaderboard = false) {
     el.auctionRoundItems.textContent = round.itemsToDistribute;
     el.auctionExtensions.textContent = round.extensionCount || 0;
     el.extensionsStat.style.display = a.status === 'active' ? '' : 'none';
+    state.currentAuction.roundEndTime = new Date(round.endTime).getTime();
   }
   
   el.auctionItems.textContent = `${a.totalItems - a.distributedItems} / ${a.totalItems}`;
   el.minWinningBid.textContent = `${a.minWinningBid || a.startingPrice} ⭐`;
   
-  // Обновляем заголовок таблицы в зависимости от статуса
+  // Заголовок таблицы
   const leaderboardTitle = document.querySelector('.leaderboard-header h3');
   if (leaderboardTitle) {
-    leaderboardTitle.setAttribute('data-i18n', a.status === 'completed' ? 'leaderboard.winners_title' : 'leaderboard.title');
-    leaderboardTitle.textContent = t(a.status === 'completed' ? 'leaderboard.winners_title' : 'leaderboard.title');
+    const key = a.status === 'completed' ? 'leaderboard.winners_title' : 'leaderboard.title';
+    leaderboardTitle.setAttribute('data-i18n', key);
+    leaderboardTitle.textContent = t(key);
   }
   
-  // Скрываем форму ставок для завершённых аукционов
+  // Скрываем форму ставок для завершённых
   const bidSection = document.querySelector('.bid-section');
   if (bidSection) {
     bidSection.style.display = a.status === 'completed' ? 'none' : 'block';
   }
   
-  if (round) {
-    state.currentAuction.roundEndTime = new Date(round.endTime).getTime();
-  }
-  
-  // Для активных аукционов — лидерборд придёт через WebSocket
-  // Для завершённых — грузим победителей через HTTP
-  if (!skipLeaderboard && a.status === 'completed') {
-    await loadLeaderboard(auctionId);
-  }
-  
-  // Показываем топ-10 из API пока WebSocket не подключился
+  // Показываем топ-10 пока WebSocket не прислал полный список
   if (a.topBids?.length && !leaderboardData.length) {
     leaderboardData = a.topBids.map((b, i) => ({
       position: i + 1,
@@ -647,7 +640,7 @@ async function loadAuctionDetail(auctionId, skipLeaderboard = false) {
     renderLeaderboardPage();
   }
   
-  updateUserStatusFromLeaderboard();
+  // Лидерборд/победители придут через WebSocket после auction:join
 }
 
 async function loadLeaderboard(auctionId, resetPage = true) {
@@ -849,7 +842,7 @@ function startTimer() {
     el.auctionTime.textContent = formatTime(remaining);
 
     if (remaining <= 0) {
-      loadAuctionDetail(state.currentAuction.id, true); // WS уже подключён
+      loadAuctionDetail(state.currentAuction.id);
     }
   }, 1000);
 }
@@ -1075,6 +1068,24 @@ function initSocket() {
     renderAuctionsList(data.auctions);
   });
 
+  // Подключение к аукциону — обновляем minWinningBid
+  state.socket.on('auction:joined', (data) => {
+    console.log('WS: Joined auction', data.auctionId, data.isCompleted ? '(completed)' : '(active)');
+    if (state.currentAuction && data.auctionId === state.currentAuction.id) {
+      if (data.minWinningBid) {
+        el.minWinningBid.textContent = `${data.minWinningBid} ⭐`;
+      }
+    }
+  });
+
+  // Победители — для завершённых аукционов
+  state.socket.on('auction:winners', (data) => {
+    console.log('WS: Winners received', data.winners?.length);
+    if (state.currentAuction && data.auctionId === state.currentAuction.id) {
+      renderWinners(data.winners);
+    }
+  });
+
   state.socket.on('auction:event', (event) => {
     if (state.currentAuction && event.auctionId === state.currentAuction.id) {
       handleAuctionEvent(event);
@@ -1132,20 +1143,20 @@ function handleAuctionEvent(event) {
   switch (event.type) {
     case 'round_started':
       notify(t('event.round_started', { n: event.roundNumber + 1 }), 'success');
-      loadAuctionDetail(state.currentAuction.id, true); // WS уже подключён
+      loadAuctionDetail(state.currentAuction.id);
       break;
     case 'round_ending_soon':
       notify(t('event.round_ending'), 'warning');
       break;
     case 'round_ended':
       notify(t('event.round_ended', { count: event.data?.winnersCount || 0 }), 'info');
-      loadAuctionDetail(state.currentAuction.id, true); // WS уже подключён
+      loadAuctionDetail(state.currentAuction.id);
       updateBalance();
       break;
     case 'auction_completed':
       notify(t('event.auction_completed'), 'success');
       // Загружаем детали + победителей через HTTP (WS лидерборд не нужен)
-      loadAuctionDetail(state.currentAuction.id, false);
+      loadAuctionDetail(state.currentAuction.id);
       updateBalance();
       break;
   }
