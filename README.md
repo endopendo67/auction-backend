@@ -23,16 +23,23 @@ docker-compose up -d
 
 Приложение доступно на **http://localhost**
 
+**Архитектура:**
+- Frontend: `http://localhost:80` (статика)
+- Backend API: `http://localhost:3001/api` (REST + WebSocket)
+
+Frontend работает даже если backend не запущен.
+
 ### Проверка статуса
 
 ```bash
 docker-compose ps
 ```
 
-Все сервисы должны быть в состоянии `Up (healthy)`:
-- `auction-app` — основное приложение
-- `auction-mongo` — MongoDB с replica set
-- `auction-redis` — Redis для кэширования
+Все сервисы должны быть в состоянии `Up`:
+- `auction-frontend` — статический сервер (порт 80)
+- `auction-backend` — API сервер (порт 3001)
+- `auction-mongo` — MongoDB с replica set (порт 27017)
+- `auction-redis` — Redis для кэширования (порт 6379)
 
 ### Просмотр логов
 
